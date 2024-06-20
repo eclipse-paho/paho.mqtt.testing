@@ -138,7 +138,10 @@ def run(config=None):
 
   logger.info("Python version "+sys.version)
 
-  signal.signal(signal.SIGTERM, handler)
+  try:
+    signal.signal(signal.SIGTERM, handler)
+  except ValueError:  # we are probably running in a thread
+    pass
 
   lock = threading.RLock() # shared lock
 
