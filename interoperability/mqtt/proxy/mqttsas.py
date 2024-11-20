@@ -18,7 +18,7 @@
 
 # Trace MQTT traffic
 
-from ..formats import MQTTV311 as MQTTV3
+from ..formats import MQTTV5 as MQTTV5
 
 import socket, sys, select, socketserver, traceback, datetime, os
 
@@ -48,33 +48,33 @@ class MyHandler(socketserver.StreamRequestHandler):
         (i, o, e) = select.select([clients, brokers], [], [])
         for s in i:
           if s == clients:
-            inbuf = MQTTV3.getPacket(clients) # get one packet
+            inbuf = MQTTV5.getPacket(clients) # get one packet
             if inbuf is None:
               break
             try:
-              packet = MQTTV3.unpackPacket(inbuf)
-              if packet.fh.MessageType == MQTTV3.PUBLISH and \
+              packet = MQTTV5.unpackPacket(inbuf)
+              if packet.fh.PacketType == MQTTV5.PacketTypes.PUBLISH and \
                   packet.topicName == "MQTTSAS topic" and \
                   packet.data == b"TERMINATE":
                 print("Terminating client", self.ids[id(clients)])
                 brokers.close()
                 clients.close()
                 break
-              elif packet.fh.MessageType == MQTTV3.CONNECT:
+              elif packet.fh.PacketType == MQTTV5.PacketTypes.CONNECT:
                 self.ids[id(clients)] = packet.ClientIdentifier
                 self.versions[id(clients)] = 3
-              print(timestamp() , "C to S", self.ids[id(clients)], repr(packet))
+              print(timestamp() , "C to S", self.ids[id(clients)], packet.json())
               print([hex(b) for b in inbuf])
               print(inbuf)
             except:
               traceback.print_exc()
             brokers.sendall(inbuf)       # pass it on
           elif s == brokers:
-            inbuf = MQTTV3.getPacket(brokers) # get one packet
+            inbuf = MQTTV5.getPacket(brokers) # get one packet
             if inbuf is None:
               break
             try:
-              print(timestamp(), "S to C", self.ids[id(clients)], repr(MQTTV3.unpackPacket(inbuf)))
+              print(timestamp(), "S to C", self.ids[id(clients)], MQTTV5.unpackPacket(inbuf).json())
             except:
               traceback.print_exc()
             clients.sendall(inbuf)
