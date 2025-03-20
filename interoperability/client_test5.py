@@ -551,7 +551,7 @@ class Test(unittest.TestCase):
       aclient.subscribe([topics[0]], [MQTTV5.SubscribeOptions(2, noLocal=True)])
       self.waitfor(callback.subscribeds, 1, 3)
       bclient.subscribe([topics[0]], [MQTTV5.SubscribeOptions(2, noLocal=True)])
-      self.waitfor(callback.subscribeds, 1, 3)
+      self.waitfor(callback2.subscribeds, 1, 3)
       aclient.publish(topics[0], b"noLocal test", 1, retained=False)
 
       self.waitfor(callback2.messages, 1, 3)
