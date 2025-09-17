@@ -602,8 +602,7 @@ class MQTTBrokers:
         self.handleBehaviourPublish(sock, packet.topicName, packet.data)
     else:
         if packet.fh.QoS > 0 and len(self.clients[sock].inbound) >= self.options["receiveMaximum"]:
-          self.disconnect(sock, reasonCode="Receive maximum of %d exceeded: %d" % 
-             (self.options["receiveMaximum"], len(self.clients[sock].inbound)+1), sendWillMessage=True)
+          self.disconnect(sock, reasonCode="Receive maximum exceeded", sendWillMessage=True)
           return
         if hasattr(packet.properties, "UserProperty") and len(packet.properties.UserProperty) > 1:
           logger.info("[MQTT-3.1.3-10] Must maintain order of user properties")
