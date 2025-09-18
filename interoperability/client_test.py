@@ -458,5 +458,9 @@ if __name__ == "__main__":
 
   print("hostname", host, "port", port)
 
+  # Clean up sys.argv to remove processed arguments before calling unittest.main()
+  # Keep only the script name and any remaining arguments (from getopt's 'args')
+  sys.argv = [sys.argv[0]] + args
+
   for i in range(iterations):
     unittest.main()
