@@ -1,6 +1,6 @@
 """
 *******************************************************************
-  Copyright (c) 2013, 2018 IBM Corp.
+  Copyright (c) 2013, 2026 IBM Corp., Ian Craggs
  
   All rights reserved. This program and the accompanying materials
   are made available under the terms of the Eclipse Public License v1.0
@@ -57,7 +57,10 @@ class Brokers:
 
   def connect(self, aClient):
     aClient.connected = True
-    aClient.timestamp = time.clock()
+    try:
+      aClient.timestamp = time.clock() # time.clock is deprecated
+    except:
+      aClient.timestamp = time.process_time()
     self.__clients[aClient.id] = aClient
     if aClient.cleansession:
       self.cleanSession(aClient.id)
