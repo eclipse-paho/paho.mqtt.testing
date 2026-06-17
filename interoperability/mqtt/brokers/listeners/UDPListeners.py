@@ -39,7 +39,10 @@ class UDPHandler(socketserver.BaseRequestHandler):
   """
 
   def handle(self):
-    terminate = brokerSN.handleRequest(self.request[0], self.client_address, (respond, self))
+    try:
+      terminate = brokerSN.handleRequest(self.request[0], self.client_address, (respond, self))
+    except MQTTSNException as exc:
+      logger.error(exc.args[0])
 
 
 class ThreadingUDPServer(socketserver.ThreadingMixIn,

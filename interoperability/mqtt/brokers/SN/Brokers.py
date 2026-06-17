@@ -3,11 +3,11 @@
   Copyright (c) 2013, 2026 IBM Corp., Ian Craggs
  
   All rights reserved. This program and the accompanying materials
-  are made available under the terms of the Eclipse Public License v1.0
+  are made available under the terms of the Eclipse Public License v2.0
   and Eclipse Distribution License v1.0 which accompany this distribution. 
  
   The Eclipse Public License is available at 
-     http://www.eclipse.org/legal/epl-v10.html
+     http://www.eclipse.org/legal/epl-v20.html
   and the Eclipse Distribution License is available at 
     http://www.eclipse.org/org/documents/edl-v10.php.
  
@@ -87,7 +87,10 @@ class Brokers:
         del self.__clients[aClientid]
       else:
         logger.info("[MQTT-3.1.2-4] broker must store the session data for client %s", aClientid)
-        self.__clients[aClientid].timestamp = time.clock()
+        try:
+          self.__clients[aClientid].timestamp = time.clock() # time.clock is deprecated
+        except:
+          self.__clients[aClientid].timestamp = time.process_time()
         self.__clients[aClientid].connected = False 
         logger.info("[MQTT-3.1.2-10] will message is deleted after use or disconnect, for client %s", aClientid)
         logger.info("[MQTT-3.14.4-3] on receipt of disconnect, will message is deleted")

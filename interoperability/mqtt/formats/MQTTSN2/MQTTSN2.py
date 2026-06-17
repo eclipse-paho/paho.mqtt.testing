@@ -11,6 +11,13 @@
   and the Eclipse Distribution License is available at
     http://www.eclipse.org/org/documents/edl-v10.php.
 
+ * AI Disclosure: This file was partly AI-generated. The AI-generated
+ * portions are made available under CC0-1.0 and not subject to the
+ * project's licence. The human contributor has reviewed and verified
+ * that the code is correct.
+ *
+ * SPDX-License-Identifier: EPL-2.0 and CC0-1.0
+
   Contributors:
      Ian Craggs - initial implementation and/or documentation
 *******************************************************************
@@ -62,6 +69,7 @@ class Messages(object):
     "Subscribe", "Suback", "Unsubscribe", "Unsuback", \
     "Pingreq", "Pingresp", "Disconnect", \
     "Auth", "Register", "Regack", \
+    "Pubwos", "Sleepreq", "Sleepresp", "Wakeup", \
     "Advertise", "SearchGW", "GWInfo", \
     "Fowarder Encapsulation", "Session Encapsulation", "Protection Encapsulation"]
 
@@ -1883,6 +1891,478 @@ class Regacks(Messages):
 
 # classes[n] maps packet type integer n to its class.
 # None entries mark packet types not yet implemented.
+class PubwosFlags:
+  """
+  PUBWOS Flags byte structure (Section 3.6.1.2)
+
+  Bits 7-5: Reserved (must be 0)
+  Bit 4:    Retain
+  Bits 3-2: Reserved (must be 0)
+  Bits 1-0: Topic Type (must be PREDEFINED (1) or NAME (3) only)
+  """
+
+  def __init__(self):
+    self.TopicType = 1   # 2 bits: 1=Predefined, 3=Name (Session not allowed)
+    self.Retain    = False  # bit 4
+
+  def __eq__(self, flags):
+    return self.TopicType == flags.TopicType and \
+           self.Retain    == flags.Retain
+
+  def __setattr__(self, name, value):
+    names = ["TopicType", "Retain"]
+    if name not in names:
+      raise MQTTSNException(name + " Attribute name must be one of " + str(names))
+    object.__setattr__(self, name, value)
+
+  def __str__(self):
+    return "PubwosFlags(Retain=" + str(self.Retain) + \
+           ", TopicType=" + str(self.TopicType) + ")"
+
+  def pack(self):
+    return bytes([(self.Retain << 4) | (self.TopicType & 0x03)])
+
+  def unpack(self, b0):
+    assert ((b0 >> 5) & 0x07) == 0 and ((b0 >> 2) & 0x03) == 0, \
+        "[MQTT-SN-3.6.1.2-1] bits 7-5 and 3-2 of the PUBWOS flags are reserved and must be 0"
+    self.Retain    = ((b0 >> 4) & 0x01) == 1
+    self.TopicType = b0 & 0x03
+    assert self.TopicType in (1, 3), \
+        "[MQTT-SN-3.6.1.2.1-1] PUBWOS TopicType must be Predefined (1) or Topic Name (3)"
+    return 1
+
+
+class Pubwoses(Messages):
+  """
+  PUBWOS (Publish Without Session) packet (Section 3.6.1).
+
+  Wire format: length + type(1) + flags(1) +
+               topic_alias_or_len(2) + [topic_name(utf-8)] + payload(binary)
+
+  No PacketId, no QoS, no DUP — this is a fire-and-forget session-less publish.
+  TopicType must be Predefined (1) or Topic Name (3); Session alias is not allowed.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "PubwosFlags", "TopicAlias", "TopicName", "Data"])
+    self.messageType = MessageTypes.PUBWOS
+    self.PubwosFlags = PubwosFlags()
+    self.TopicAlias  = 0    # used when TopicType is Predefined (1)
+    self.TopicName   = b""  # used when TopicType is Name (3)
+    self.Data        = b""
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    body = bytes([MessageTypes.PUBWOS]) + self.PubwosFlags.pack()
+    if self.PubwosFlags.TopicType == 3:  # Topic Name
+      name = writeData(self.TopicName)
+      body += writeInt16(len(name)) + name
+    else:                                 # Predefined alias
+      body += writeInt16(self.TopicAlias)
+    body += writeData(self.Data)
+    msglen = 1 + len(body)
+    return bytes([msglen]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.PUBWOS
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      self.PubwosFlags.unpack(buffer[lenlen + 1])
+      pos = lenlen + 2
+      if self.PubwosFlags.TopicType == 3:  # Topic Name
+        name_len = readInt16(buffer[pos:]);  pos += 2
+        self.TopicName = buffer[pos:pos + name_len];  pos += name_len
+        self.TopicAlias = 0
+      else:                                 # Predefined alias
+        self.TopicAlias = readInt16(buffer[pos:]);  pos += 2
+        self.TopicName  = b""
+      self.Data = buffer[pos:messagelen]
+    except:
+      logger.exception("Validating pubwos packet")
+      raise
+
+  def __str__(self):
+    return "Pubwos (" + str(self.PubwosFlags) + \
+           ", TopicAlias=" + str(self.TopicAlias) + \
+           ", TopicName=" + str(self.TopicName) + \
+           ", Data=" + str(self.Data) + ")"
+
+  def __eq__(self, packet):
+    if self.PubwosFlags.TopicType == 3:
+      topic_eq = self.TopicName == packet.TopicName
+    else:
+      topic_eq = self.TopicAlias == packet.TopicAlias
+    return self.PubwosFlags == packet.PubwosFlags and \
+           topic_eq and \
+           self.Data == packet.Data
+
+
+class SleepreqFlags:
+  """
+  SLEEPREQ Flags byte structure (Section 3.15.2)
+
+  Bits 7-1: Reserved (must be 0)
+  Bit 0:    Retain Topic Aliases (RetainT)
+  """
+
+  def __init__(self):
+    self.RetainT = False  # bit 0: retain Session Topic Aliases during sleep
+
+  def __eq__(self, flags):
+    return self.RetainT == flags.RetainT
+
+  def __setattr__(self, name, value):
+    names = ["RetainT"]
+    if name not in names:
+      raise MQTTSNException(name + " Attribute name must be one of " + str(names))
+    object.__setattr__(self, name, value)
+
+  def __str__(self):
+    return "SleepreqFlags(RetainT=" + str(self.RetainT) + ")"
+
+  def pack(self):
+    return bytes([1 if self.RetainT else 0])
+
+  def unpack(self, b0):
+    assert ((b0 >> 1) & 0x7F) == 0, \
+        "[MQTT-SN-3.15.2-1] bits 7-1 of the SLEEPREQ flags are reserved and must be 0"
+    self.RetainT = (b0 & 0x01) == 1
+    return 1
+
+
+class Sleepreqs(Messages):
+  """
+  SLEEPREQ packet (Section 3.15).
+
+  Wire format: length + type(1) + flags(1) + packetid(2) + sleep_duration(4)
+
+  sleep_duration is a 4-byte big-endian integer (seconds).  Must be > 0.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "SleepreqFlags", "PacketId", "SleepDuration"])
+    self.messageType   = MessageTypes.SLEEPREQ
+    self.SleepreqFlags = SleepreqFlags()
+    self.PacketId      = 0
+    self.SleepDuration = 0  # seconds; must be > 0 per spec
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    sd = self.SleepDuration
+    body = bytes([MessageTypes.SLEEPREQ]) + \
+           self.SleepreqFlags.pack() + \
+           writeInt16(self.PacketId) + \
+           bytes([(sd >> 24) & 0xFF, (sd >> 16) & 0xFF,
+                  (sd >> 8)  & 0xFF,  sd        & 0xFF])
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.SLEEPREQ
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      self.SleepreqFlags.unpack(buffer[lenlen + 1])
+      self.PacketId = readInt16(buffer[lenlen + 2:])
+      pos = lenlen + 4
+      self.SleepDuration = (buffer[pos]   << 24) | (buffer[pos+1] << 16) | \
+                           (buffer[pos+2] <<  8) |  buffer[pos+3]
+    except:
+      logger.exception("Validating sleepreq packet")
+      raise
+
+  def __str__(self):
+    return "Sleepreq (" + str(self.SleepreqFlags) + \
+           ", PacketId=" + str(self.PacketId) + \
+           ", SleepDuration=" + str(self.SleepDuration) + ")"
+
+  def __eq__(self, packet):
+    return self.SleepreqFlags == packet.SleepreqFlags and \
+           self.PacketId      == packet.PacketId and \
+           self.SleepDuration == packet.SleepDuration
+
+
+class SleeprespFlags:
+  """
+  SLEEPRESP Flags byte structure (Section 3.16.2)
+
+  Bits 7-1: Reserved (must be 0)
+  Bit 0:    Sleep Duration Flag (SleepDur) — governs presence of SleepDuration field
+  """
+
+  def __init__(self):
+    self.SleepDur = False  # bit 0: SleepDuration field present
+
+  def __eq__(self, flags):
+    return self.SleepDur == flags.SleepDur
+
+  def __setattr__(self, name, value):
+    names = ["SleepDur"]
+    if name not in names:
+      raise MQTTSNException(name + " Attribute name must be one of " + str(names))
+    object.__setattr__(self, name, value)
+
+  def __str__(self):
+    return "SleeprespFlags(SleepDur=" + str(self.SleepDur) + ")"
+
+  def pack(self):
+    return bytes([1 if self.SleepDur else 0])
+
+  def unpack(self, b0):
+    assert ((b0 >> 1) & 0x7F) == 0, \
+        "[MQTT-SN-3.16.2-1] bits 7-1 of the SLEEPRESP flags are reserved and must be 0"
+    self.SleepDur = (b0 & 0x01) == 1
+    return 1
+
+
+class Sleepresps(Messages):
+  """
+  SLEEPRESP packet (Section 3.16).
+
+  Wire format: length + type(1) + flags(1) + packetid(2) +
+               [sleep_duration(4)]  if SleepDur flag set +
+               [reason_code(1)]     optional, inferred from packet length
+
+  SleepDuration is None when absent (flag clear).
+  ReasonCode defaults to 0x00 (Success) when absent.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "SleeprespFlags", "PacketId",
+          "SleepDuration", "ReasonCode"])
+    self.messageType    = MessageTypes.SLEEPRESP
+    self.SleeprespFlags = SleeprespFlags()
+    self.PacketId       = 0
+    self.SleepDuration  = None  # None = absent (SleepDur flag clear)
+    self.ReasonCode     = 0     # 0x00 = success; absent from wire when 0
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    self.SleeprespFlags.SleepDur = (self.SleepDuration is not None)
+    body = bytes([MessageTypes.SLEEPRESP]) + \
+           self.SleeprespFlags.pack() + \
+           writeInt16(self.PacketId)
+    if self.SleeprespFlags.SleepDur:
+      sd = self.SleepDuration
+      body += bytes([(sd >> 24) & 0xFF, (sd >> 16) & 0xFF,
+                     (sd >> 8)  & 0xFF,  sd        & 0xFF])
+    if self.ReasonCode != 0:
+      body += bytes([self.ReasonCode])
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.SLEEPRESP
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      self.SleeprespFlags.unpack(buffer[lenlen + 1])
+      self.PacketId = readInt16(buffer[lenlen + 2:])
+      pos = lenlen + 4
+      if self.SleeprespFlags.SleepDur:
+        self.SleepDuration = (buffer[pos]   << 24) | (buffer[pos+1] << 16) | \
+                             (buffer[pos+2] <<  8) |  buffer[pos+3]
+        pos += 4
+      else:
+        self.SleepDuration = None
+      # ReasonCode: optional, inferred from remaining packet length (Section 3.16.4)
+      if pos < messagelen:
+        self.ReasonCode = buffer[pos]
+      else:
+        self.ReasonCode = 0
+    except:
+      logger.exception("Validating sleepresp packet")
+      raise
+
+  def __str__(self):
+    s = "Sleepresp (" + str(self.SleeprespFlags) + \
+        ", PacketId=" + str(self.PacketId)
+    if self.SleepDuration is not None:
+      s += ", SleepDuration=" + str(self.SleepDuration)
+    return s + ", ReasonCode=" + str(self.ReasonCode) + ")"
+
+  def __eq__(self, packet):
+    return self.SleeprespFlags == packet.SleeprespFlags and \
+           self.PacketId       == packet.PacketId and \
+           self.SleepDuration  == packet.SleepDuration and \
+           self.ReasonCode     == packet.ReasonCode
+
+
+class Wakeups(Messages):
+  """
+  WAKEUP packet (Section 3.14).
+
+  Wire format: length + type(1)
+
+  No data fields — the packet is just the header; its presence is the signal.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names", ["messageType"])
+    self.messageType = MessageTypes.WAKEUP
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    body = bytes([MessageTypes.WAKEUP])
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.WAKEUP
+    # No data fields to read
+
+  def __str__(self):
+    return "Wakeup ()"
+
+  def __eq__(self, packet):
+    return True  # no variable fields; any two Wakeup packets are equal
+
+
+class Advertises(Messages):
+  """
+  ADVERTISE packet (Section 3.20.1).
+
+  Wire format: length + type(1) + gateway_id(1) + duration(2)
+
+  Broadcast periodically by a gateway to advertise its presence.
+  Duration is the time interval in seconds until the next ADVERTISE.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names", ["messageType", "GatewayId", "Duration"])
+    self.messageType = MessageTypes.ADVERTISE
+    self.GatewayId   = 0   # 1 byte: unique gateway identifier
+    self.Duration    = 0   # 2 bytes: seconds until next ADVERTISE
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    body = bytes([MessageTypes.ADVERTISE, self.GatewayId]) + \
+           writeInt16(self.Duration)
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.ADVERTISE
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      self.GatewayId = buffer[lenlen + 1]
+      self.Duration  = readInt16(buffer[lenlen + 2:])
+    except:
+      logger.exception("Validating advertise packet")
+      raise
+
+  def __str__(self):
+    return "Advertise (GatewayId=" + str(self.GatewayId) + \
+           ", Duration=" + str(self.Duration) + ")"
+
+  def __eq__(self, packet):
+    return self.GatewayId == packet.GatewayId and \
+           self.Duration  == packet.Duration
+
+
+class Searchgws(Messages):
+  """
+  SEARCHGW packet (Section 3.20.2).
+
+  Wire format: length + type(1) + [additional_network_info(bytes, optional)]
+
+  AdditionalNetworkInfo is optional; its presence is inferred from packet length.
+  When absent it is stored as b"".
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "AdditionalNetworkInfo"])
+    self.messageType            = MessageTypes.SEARCHGW
+    self.AdditionalNetworkInfo  = b""  # b"" means absent
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    body = bytes([MessageTypes.SEARCHGW]) + writeData(self.AdditionalNetworkInfo)
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.SEARCHGW
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      pos = lenlen + 1  # byte after type
+      # AdditionalNetworkInfo is optional; fills remainder of packet
+      if pos < messagelen:
+        self.AdditionalNetworkInfo = buffer[pos:messagelen]
+      else:
+        self.AdditionalNetworkInfo = b""
+    except:
+      logger.exception("Validating searchgw packet")
+      raise
+
+  def __str__(self):
+    return "Searchgw (AdditionalNetworkInfo=" + \
+           str(self.AdditionalNetworkInfo) + ")"
+
+  def __eq__(self, packet):
+    return self.AdditionalNetworkInfo == packet.AdditionalNetworkInfo
+
+
+class Gwinfos(Messages):
+  """
+  GWINFO packet (Section 3.20.3).
+
+  Wire format: length + type(1) + gateway_id(1) + [gateway_address(bytes, optional)]
+
+  GatewayAddress is optional; present only when sent by a client (not a gateway).
+  Its presence is inferred from packet length.  Stored as b"" when absent.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "GatewayId", "GatewayAddress"])
+    self.messageType    = MessageTypes.GWINFO
+    self.GatewayId      = 0   # 1 byte
+    self.GatewayAddress = b""  # b"" means absent (packet sent by gateway)
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    body = bytes([MessageTypes.GWINFO, self.GatewayId]) + \
+           writeData(self.GatewayAddress)
+    return bytes([1 + len(body)]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.GWINFO
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      self.GatewayId = buffer[lenlen + 1]
+      pos = lenlen + 2
+      # GatewayAddress is optional; fills remainder of packet (Section 3.20.3.3)
+      if pos < messagelen:
+        self.GatewayAddress = buffer[pos:messagelen]
+      else:
+        self.GatewayAddress = b""
+    except:
+      logger.exception("Validating gwinfo packet")
+      raise
+
+  def __str__(self):
+    return "Gwinfo (GatewayId=" + str(self.GatewayId) + \
+           ", GatewayAddress=" + str(self.GatewayAddress) + ")"
+
+  def __eq__(self, packet):
+    return self.GatewayId      == packet.GatewayId and \
+           self.GatewayAddress == packet.GatewayAddress
+
+
+# classes[n] maps packet type integer n to its class.
+# None entries mark packet types not yet implemented.
 classes = [None,           # 0   reserved
            Connects,       # 1   CONNECT
            Connacks,       # 2   CONNACK
@@ -1900,7 +2380,14 @@ classes = [None,           # 0   reserved
            Disconnects,    # 14  DISCONNECT
            Auths,          # 15  AUTH
            Registers,      # 16  REGISTER
-           Regacks]        # 17  REGACK
+           Regacks,        # 17  REGACK
+           Pubwoses,       # 18  PUBWOS
+           Sleepreqs,      # 19  SLEEPREQ
+           Sleepresps,     # 20  SLEEPRESP
+           Wakeups,        # 21  WAKEUP
+           Advertises,     # 22  ADVERTISE
+           Searchgws,      # 23  SEARCHGW
+           Gwinfos]        # 24  GWINFO
 
 def unpackPacket(buffer, maximumPacketSize=MAX_PACKET_SIZE):
   packet_type = MessageType(buffer)

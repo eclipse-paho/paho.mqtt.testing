@@ -7,7 +7,7 @@
   and Eclipse Distribution License v1.0 which accompany this distribution.
 
   The Eclipse Public License is available at
-     http://www.eclipse.org/legal/epl-v10.html
+     http://www.eclipse.org/legal/epl-v20.html
   and the Eclipse Distribution License is available at
     http://www.eclipse.org/org/documents/edl-v10.php.
 
@@ -297,8 +297,8 @@ class MQTTSNBrokers:
       me = MQTTSNClients(packet.ClientId, packet.ConnectFlags.CleanStart, packet.SessionExpiryInterval, callback, self)
     else:
       me.socket = sock # set existing client state to new socket
-      me.cleansession = packet.Flags.CleanSession
-      me.keepalive = packet.Duration
+      me.cleanstart = packet.ConnectFlags.CleanStart
+      me.keepalive = packet.KeepAlive
     logger.info("[MQTT-4.1.0-1] server must store data for at least as long as the network connection lasts")
     self.clients[sock] = me
     #me.will = (packet.WillTopic, packet.WillQoS, packet.WillMessage, packet.WillRETAIN) if packet.WillFlag else None
