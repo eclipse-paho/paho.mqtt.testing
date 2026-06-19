@@ -2361,8 +2361,340 @@ class Gwinfos(Messages):
            self.GatewayAddress == packet.GatewayAddress
 
 
+class ForwarderEncapsulations(Messages):
+  """
+  Forwarder Encapsulation packet (Section 3.19).
+
+  A forwarder wraps client packets verbatim when relaying them to a gateway
+  that is not on the same network segment.
+
+  Wire format:
+    outer_length + type(1) + ClientAddressingInfo(variable) ||
+    inner_packet(variable, NOT counted in outer_length)
+
+  The Length field in the outer header counts only up to the end of the
+  ClientAddressingInfo field (inclusive of the length field itself).
+  The inner MQTT-SN packet immediately follows and is not included in
+  that count.  ClientAddressingInfo may be zero bytes.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "ClientAddressingInfo", "MQTTSNPacket"])
+    self.messageType           = MessageTypes.FOWARDER_ENCAPSULATION
+    self.ClientAddressingInfo  = b""   # variable-length addressing data
+    self.MQTTSNPacket          = b""   # raw bytes of the encapsulated packet
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    # Outer section: type(1) + ClientAddressingInfo
+    outer_body = bytes([MessageTypes.FOWARDER_ENCAPSULATION]) + \
+                 writeData(self.ClientAddressingInfo)
+    outer_len = 1 + len(outer_body)  # length field(1) + outer_body
+    return bytes([outer_len]) + outer_body + writeData(self.MQTTSNPacket)
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.FOWARDER_ENCAPSULATION
+    try:
+      outer_len, lenlen = MessageLens.decode(buffer)
+      # ClientAddressingInfo occupies the bytes between the type byte and
+      # the end of the outer header (outer_len bytes total from buffer[0]).
+      addr_start = lenlen + 1          # byte after type
+      addr_end   = outer_len           # outer_len is total outer size
+      self.ClientAddressingInfo = buffer[addr_start:addr_end]
+      # Inner packet follows immediately after the outer header
+      self.MQTTSNPacket = buffer[outer_len:]
+    except:
+      logger.exception("Validating forwarder encapsulation packet")
+      raise
+
+  def __str__(self):
+    return "ForwarderEncapsulation (" \
+           "ClientAddressingInfo=" + str(self.ClientAddressingInfo) + \
+           ", MQTTSNPacket=" + str(self.MQTTSNPacket) + ")"
+
+  def __eq__(self, packet):
+    return self.ClientAddressingInfo == packet.ClientAddressingInfo and \
+           self.MQTTSNPacket         == packet.MQTTSNPacket
+
+
+class SessionEncapsulations(Messages):
+  """
+  Connection (Session) Encapsulation packet (Section 3.18).
+
+  Allows a client whose network address has changed to associate a packet
+  with an existing virtual connection by embedding its ClientIdentifier.
+  Only clients may use this encapsulation.
+
+  Wire format:
+    outer_length + type(1) + ClientIdentifier(UTF-8, variable) ||
+    inner_packet(variable, NOT counted in outer_length)
+
+  The Length field in the outer header counts only up to the end of the
+  ClientIdentifier field (inclusive of the length field itself).
+  The inner MQTT-SN packet immediately follows and is not counted.
+  ClientIdentifier may be zero bytes (empty string).
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType", "ClientIdentifier", "MQTTSNPacket"])
+    self.messageType      = MessageTypes.SESSION_ENCAPSULATION
+    self.ClientIdentifier = ""    # UTF-8 string; the virtual-connection client ID
+    self.MQTTSNPacket     = b""   # raw bytes of the encapsulated packet
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    cid_bytes = writeData(self.ClientIdentifier)
+    outer_body = bytes([MessageTypes.SESSION_ENCAPSULATION]) + cid_bytes
+    outer_len  = 1 + len(outer_body)  # length field(1) + outer_body
+    return bytes([outer_len]) + outer_body + writeData(self.MQTTSNPacket)
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.SESSION_ENCAPSULATION
+    try:
+      outer_len, lenlen = MessageLens.decode(buffer)
+      cid_start = lenlen + 1   # byte after type
+      cid_end   = outer_len    # up to end of outer header
+      self.ClientIdentifier = buffer[cid_start:cid_end].decode("utf-8")
+      # Inner packet follows immediately after the outer header
+      self.MQTTSNPacket = buffer[outer_len:]
+    except:
+      logger.exception("Validating session encapsulation packet")
+      raise
+
+  def __str__(self):
+    return "SessionEncapsulation (" \
+           "ClientIdentifier=" + str(self.ClientIdentifier) + \
+           ", MQTTSNPacket=" + str(self.MQTTSNPacket) + ")"
+
+  def __eq__(self, packet):
+    return self.ClientIdentifier == packet.ClientIdentifier and \
+           self.MQTTSNPacket     == packet.MQTTSNPacket
+
+
+class ProtectionFlags:
+  """
+  Protection Flags byte structure (Section 3.17.2).
+
+  Bits 1-0: Monotonic Counter Length (CounterLen)
+    0x0 → no counter present
+    0x1 → 2-byte counter present
+    0x2 → 4-byte counter present
+    0x3 → reserved (MUST NOT be used)
+
+  Bits 3-2: Cryptographic Material Length (CryptoLen)
+    0x0 → no crypto material present
+    0x1 → 2 bytes present
+    0x2 → 4 bytes present
+    0x3 → 12 bytes present
+
+  Bits 7-4: Authentication Tag Length (AuthTagLen)
+    0x0 → provider-defined length
+    0x1 → scheme nominal tag size
+    0x2/0x3 → reserved (MUST NOT be used)
+    0x4–0xF → AuthOnly truncation; tag length = value × 2 bytes
+  """
+
+  # Maps CounterLen flag value → byte count of the MonotonicCounter field
+  COUNTER_BYTES = {0: 0, 1: 2, 2: 4}
+
+  # Maps CryptoLen flag value → byte count of the CryptographicMaterial field
+  CRYPTO_BYTES = {0: 0, 1: 2, 2: 4, 3: 12}
+
+  def __init__(self):
+    self.CounterLen = 0   # bits 1-0: monotonic counter length code
+    self.CryptoLen  = 0   # bits 3-2: cryptographic material length code
+    self.AuthTagLen = 1   # bits 7-4: authentication tag length code
+
+  def __eq__(self, flags):
+    return self.CounterLen == flags.CounterLen and \
+           self.CryptoLen  == flags.CryptoLen  and \
+           self.AuthTagLen == flags.AuthTagLen
+
+  def __setattr__(self, name, value):
+    names = ["CounterLen", "CryptoLen", "AuthTagLen"]
+    if name not in names:
+      raise MQTTSNException(name + " Attribute name must be one of " + str(names))
+    object.__setattr__(self, name, value)
+
+  def __str__(self):
+    return "ProtectionFlags(AuthTagLen=" + str(self.AuthTagLen) + \
+           ", CryptoLen="  + str(self.CryptoLen) + \
+           ", CounterLen=" + str(self.CounterLen) + ")"
+
+  def pack(self):
+    return bytes([(self.AuthTagLen << 4) |
+                  ((self.CryptoLen & 0x03) << 2) |
+                  (self.CounterLen & 0x03)])
+
+  def unpack(self, b0):
+    self.AuthTagLen = (b0 >> 4) & 0x0F
+    self.CryptoLen  = (b0 >> 2) & 0x03
+    self.CounterLen = b0 & 0x03
+    assert self.CounterLen != 3, \
+        "[MQTT-SN-3.17.2.1-1] MonotonicCounterLength value 0x3 is reserved"
+    assert self.AuthTagLen not in (2, 3), \
+        "[MQTT-SN-3.17.2.3-3] AuthenticationTagLength values 0x2 and 0x3 are reserved"
+    return 1
+
+  def crypto_material_size(self):
+    """Return the byte count of the CryptographicMaterial field."""
+    return self.CRYPTO_BYTES[self.CryptoLen]
+
+  def counter_size(self):
+    """Return the byte count of the MonotonicCounter field."""
+    return self.COUNTER_BYTES.get(self.CounterLen, 0)
+
+
+class ProtectionEncapsulations(Messages):
+  """
+  Protection Encapsulation packet (Section 3.17).
+
+  Provides cryptographic authentication (and optionally encryption) for any
+  MQTT-SN packet except a Forwarder Encapsulation.
+
+  Wire format (all fields mandatory unless flagged optional):
+    length + type(1) + ProtectionFlags(1) + ProtectionScheme(1) +
+    SenderIdentifier(8) + Random(4) +
+    [CryptographicMaterial(2/4/12 bytes, from CryptoLen flag)] +
+    [MonotonicCounter(2/4 bytes, from CounterLen flag)] +
+    ProtectedMQTTSNPacket(variable) +
+    AuthenticationTag(variable, length determined by AuthTagLen flag and scheme)
+
+  This class stores raw bytes for the opaque fields (ProtectedMQTTSNPacket and
+  AuthenticationTag) so it can be serialized and deserialized without needing
+  to perform the actual cryptographic operations.
+
+  Because the Authentication Tag length depends on the protection scheme's
+  nominal tag size (when AuthTagLen == 0x1), the caller must supply the tag
+  as a raw bytes object; the class makes no attempt to compute or verify it.
+  """
+
+  def __init__(self, buffer=None):
+    object.__setattr__(self, "names",
+         ["messageType",
+          "ProtectionFlags", "ProtectionScheme",
+          "SenderIdentifier", "Random",
+          "CryptographicMaterial", "MonotonicCounter",
+          "ProtectedMQTTSNPacket", "AuthenticationTag"])
+    self.messageType           = MessageTypes.PROTECTION_ENCAPSULATION
+    self.ProtectionFlags       = ProtectionFlags()
+    self.ProtectionScheme      = 0x00    # default: HMAC-SHA256
+    self.SenderIdentifier      = b'\x00' * 8  # 8 bytes, e.g. MAC address
+    self.Random                = b'\x00' * 4  # 4 bytes
+    self.CryptographicMaterial = b""     # present when CryptoLen != 0
+    self.MonotonicCounter      = b""     # present when CounterLen != 0
+    self.ProtectedMQTTSNPacket = b""     # raw bytes of the protected packet
+    self.AuthenticationTag     = b""     # raw authentication tag bytes
+    if buffer != None:
+      self.unpack(buffer)
+
+  def pack(self):
+    # Validate sizes against flags
+    pf = self.ProtectionFlags
+    pf.CryptoLen  = {0: 0, 2: 1, 4: 2, 12: 3}[len(self.CryptographicMaterial)]
+    pf.CounterLen = {0: 0, 2: 1, 4: 2}[len(self.MonotonicCounter)]
+
+    body = bytes([MessageTypes.PROTECTION_ENCAPSULATION]) + \
+           pf.pack() + \
+           bytes([self.ProtectionScheme]) + \
+           writeData(self.SenderIdentifier) + \
+           writeData(self.Random) + \
+           writeData(self.CryptographicMaterial) + \
+           writeData(self.MonotonicCounter) + \
+           writeData(self.ProtectedMQTTSNPacket) + \
+           writeData(self.AuthenticationTag)
+    # Use 4-byte extended length when the packet exceeds 255 bytes
+    msglen = 1 + len(body)
+    if msglen <= 255:
+      return bytes([msglen]) + body
+    else:
+      # 4-byte length: 0x01 + hi + lo covers (msglen+2) total
+      total = msglen + 2    # 4-byte length field is 3 bytes larger than 1-byte
+      return bytes([0x01, (total >> 8) & 0xFF, total & 0xFF]) + body
+
+  def unpack(self, buffer):
+    assert len(buffer) >= 2
+    assert MessageType(buffer) == MessageTypes.PROTECTION_ENCAPSULATION
+    try:
+      messagelen, lenlen = MessageLens.decode(buffer)
+      pos = lenlen + 1   # byte after type
+
+      self.ProtectionFlags.unpack(buffer[pos]);  pos += 1
+      pf = self.ProtectionFlags
+
+      self.ProtectionScheme = buffer[pos];  pos += 1
+
+      self.SenderIdentifier = buffer[pos:pos + 8];  pos += 8
+      self.Random           = buffer[pos:pos + 4];  pos += 4
+
+      csize = pf.crypto_material_size()
+      self.CryptographicMaterial = buffer[pos:pos + csize];  pos += csize
+
+      msize = pf.counter_size()
+      self.MonotonicCounter = buffer[pos:pos + msize];  pos += msize
+
+      # Determine the AuthenticationTag byte length from the flag
+      auth_tag_len_code = pf.AuthTagLen
+      if auth_tag_len_code >= 4:
+        # [MQTT-SN-3.17.2.3-6]: tag length = AuthTagLen × 2 bytes
+        tag_bytes = auth_tag_len_code * 2
+      else:
+        # 0x0 (provider-defined) or 0x1 (nominal size):
+        # We cannot compute the length without scheme knowledge, so we store
+        # everything remaining after the protected packet as the tag.
+        # The protected packet is identified by reading its own length prefix.
+        tag_bytes = None   # resolved below
+
+      # Read the ProtectedMQTTSNPacket using its own length field
+      if pos < messagelen:
+        inner_len, inner_lenlen = MessageLens.decode(buffer[pos:])
+        self.ProtectedMQTTSNPacket = buffer[pos:pos + inner_len]
+        pos += inner_len
+      else:
+        self.ProtectedMQTTSNPacket = b""
+
+      # AuthenticationTag: remainder of packet (or fixed size if known)
+      if tag_bytes is not None:
+        self.AuthenticationTag = buffer[pos:pos + tag_bytes]
+      else:
+        self.AuthenticationTag = buffer[pos:messagelen]
+
+    except:
+      logger.exception("Validating protection encapsulation packet")
+      raise
+
+  def __str__(self):
+    return "ProtectionEncapsulation (" \
+           + str(self.ProtectionFlags) + \
+           ", ProtectionScheme=0x{:02X}".format(self.ProtectionScheme) + \
+           ", SenderIdentifier=" + str(self.SenderIdentifier) + \
+           ", Random=" + str(self.Random) + \
+           ", CryptographicMaterial=" + str(self.CryptographicMaterial) + \
+           ", MonotonicCounter=" + str(self.MonotonicCounter) + \
+           ", ProtectedMQTTSNPacket=" + str(self.ProtectedMQTTSNPacket) + \
+           ", AuthenticationTag=" + str(self.AuthenticationTag) + ")"
+
+  def __eq__(self, packet):
+    return self.ProtectionFlags       == packet.ProtectionFlags       and \
+           self.ProtectionScheme      == packet.ProtectionScheme      and \
+           self.SenderIdentifier      == packet.SenderIdentifier      and \
+           self.Random                == packet.Random                 and \
+           self.CryptographicMaterial == packet.CryptographicMaterial and \
+           self.MonotonicCounter      == packet.MonotonicCounter      and \
+           self.ProtectedMQTTSNPacket == packet.ProtectedMQTTSNPacket and \
+           self.AuthenticationTag     == packet.AuthenticationTag
+
+
 # classes[n] maps packet type integer n to its class.
 # None entries mark packet types not yet implemented.
+# The three encapsulation types (0xFD, 0xFE, 0xFF) are sparse and handled
+# separately in the encapsulation_classes dict below.
 classes = [None,           # 0   reserved
            Connects,       # 1   CONNECT
            Connacks,       # 2   CONNACK
@@ -2389,11 +2721,25 @@ classes = [None,           # 0   reserved
            Searchgws,      # 23  SEARCHGW
            Gwinfos]        # 24  GWINFO
 
+# Sparse dict for the three high-value encapsulation type codes
+encapsulation_classes = {
+    MessageTypes.FOWARDER_ENCAPSULATION:    ForwarderEncapsulations,
+    MessageTypes.SESSION_ENCAPSULATION:     SessionEncapsulations,
+    MessageTypes.PROTECTION_ENCAPSULATION:  ProtectionEncapsulations,
+}
+
 def unpackPacket(buffer, maximumPacketSize=MAX_PACKET_SIZE):
   packet_type = MessageType(buffer)
-  if packet_type != None and packet_type < len(classes) and classes[packet_type] != None:
+  if packet_type is None:
+    return None
+  # Check sparse encapsulation types first
+  if packet_type in encapsulation_classes:
+    packet = encapsulation_classes[packet_type]()
+    packet.unpack(buffer)
+    return packet
+  # Regular indexed types
+  if packet_type < len(classes) and classes[packet_type] is not None:
     packet = classes[packet_type]()
-    packet.unpack(buffer) #, maximumPacketSize=maximumPacketSize)
-  else:
-    packet = None
-  return packet
+    packet.unpack(buffer)
+    return packet
+  return None
