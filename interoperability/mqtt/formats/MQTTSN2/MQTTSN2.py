@@ -43,7 +43,7 @@ class MQTTSNException(Exception):
 MAX_PACKET_SIZE = 2**16-1
 MAX_PACKETID = 2**16-1
 
-class MessageTypes:
+class PacketTypes:
 
   indexes = [x for x in range(1, 0X19)] + [0XFD, 0XFE, 0XFF]
 
@@ -56,13 +56,13 @@ class MessageTypes:
   ADVERTISE, SEARCHGW, GWINFO, \
   FOWARDER_ENCAPSULATION, SESSION_ENCAPSULATION, PROTECTION_ENCAPSULATION = indexes
 
-def MessageType(buffer):
+def PacketType(buffer):
   index = 1
   if buffer[0] == 1:
     index = 3
   return buffer[index]
 
-class Messages(object):
+class Packets(object):
 
   Names = ["Reserved", "Connect", "Connack", \
     "Publish", "Puback", "Pubrec", "Pubrel", "Pubcomp", \
@@ -132,7 +132,7 @@ def writeLenData(data):
   # data could be a string, or bytes.  If string, encode into bytes with utf-8
   return writeInt16(len(data)) + (data if type(data) == type(b"") else bytes(data, "utf-8"))
 
-class MessageLens:
+class PacketLens:
 
   @staticmethod
   def encode(x):
@@ -219,117 +219,117 @@ class ReasonCodes:
  
       0x00 : {
         "Success" : [
-          MessageTypes.CONNACK, MessageTypes.UNSUBACK,
-          MessageTypes.REGACK,
-          MessageTypes.PUBACK, MessageTypes.PUBREC,
-          MessageTypes.PUBREL, MessageTypes.PUBCOMP,
-          MessageTypes.SLEEPRESP, MessageTypes.AUTH],
-        "Normal disconnection" : [MessageTypes.DISCONNECT],
-        "Granted QoS 0"        : [MessageTypes.SUBACK],
+          PacketTypes.CONNACK, PacketTypes.UNSUBACK,
+          PacketTypes.REGACK,
+          PacketTypes.PUBACK, PacketTypes.PUBREC,
+          PacketTypes.PUBREL, PacketTypes.PUBCOMP,
+          PacketTypes.SLEEPRESP, PacketTypes.AUTH],
+        "Normal disconnection" : [PacketTypes.DISCONNECT],
+        "Granted QoS 0"        : [PacketTypes.SUBACK],
       },
-      0x01 : { "Granted QoS 1" : [MessageTypes.SUBACK] },
-      0x02 : { "Granted QoS 2" : [MessageTypes.SUBACK] },
+      0x01 : { "Granted QoS 1" : [PacketTypes.SUBACK] },
+      0x02 : { "Granted QoS 2" : [PacketTypes.SUBACK] },
  
       0x04 : { "Disconnect with will message" :
-               [MessageTypes.DISCONNECT] },
+               [PacketTypes.DISCONNECT] },
  
       0x10 : { "No matching subscribers" :
-               [MessageTypes.PUBACK, MessageTypes.PUBREC] },
-      0x11 : { "No subscription existed" : [MessageTypes.UNSUBACK] },
+               [PacketTypes.PUBACK, PacketTypes.PUBREC] },
+      0x11 : { "No subscription existed" : [PacketTypes.UNSUBACK] },
  
-      0x18 : { "Continue authentication" : [MessageTypes.AUTH] },
-      0x19 : { "Re-authenticate"         : [MessageTypes.AUTH] },
+      0x18 : { "Continue authentication" : [PacketTypes.AUTH] },
+      0x19 : { "Re-authenticate"         : [PacketTypes.AUTH] },
  
       # MQTT-SN only: a Session or Predefined Topic Alias already exists
-      0x1A : { "Topic Alias Exists" : [MessageTypes.REGACK] },
+      0x1A : { "Topic Alias Exists" : [PacketTypes.REGACK] },
  
       # -----------------------------------------------------------------------
       # Error codes (>= 0x80)
       # -----------------------------------------------------------------------
  
       0x80 : { "Unspecified error" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.DISCONNECT] },
  
       0x81 : { "Malformed packet" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x82 : { "Protocol error" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x83 : { "Implementation specific error" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.REGACK, MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.REGACK, PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.DISCONNECT] },
  
-      0x84 : { "Unsupported protocol version" : [MessageTypes.CONNACK] },
-      0x85 : { "Client identifier not valid"  : [MessageTypes.CONNACK] },
-      0x86 : { "Bad user name or password"    : [MessageTypes.CONNACK] },
+      0x84 : { "Unsupported protocol version" : [PacketTypes.CONNACK] },
+      0x85 : { "Client identifier not valid"  : [PacketTypes.CONNACK] },
+      0x86 : { "Bad user name or password"    : [PacketTypes.CONNACK] },
  
       0x87 : { "Not authorized" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.REGACK, MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.REGACK, PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.DISCONNECT] },
  
-      0x88 : { "Server unavailable"   : [MessageTypes.CONNACK] },
+      0x88 : { "Server unavailable"   : [PacketTypes.CONNACK] },
       0x89 : { "Server busy"          :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
-      0x8A : { "Banned"               : [MessageTypes.CONNACK] },
-      0x8B : { "Server shutting down" : [MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
+      0x8A : { "Banned"               : [PacketTypes.CONNACK] },
+      0x8B : { "Server shutting down" : [PacketTypes.DISCONNECT] },
       0x8C : { "Bad authentication method" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
-      0x8D : { "Keep alive timeout"   : [MessageTypes.DISCONNECT] },
-      0x8E : { "Session taken over"   : [MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
+      0x8D : { "Keep alive timeout"   : [PacketTypes.DISCONNECT] },
+      0x8E : { "Session taken over"   : [PacketTypes.DISCONNECT] },
  
       0x8F : { "Topic filter invalid" : [
-               MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.DISCONNECT] },
       0x90 : { "Topic name invalid" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.DISCONNECT] },
  
       0x91 : { "Packet identifier in use" : [
-               MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.REGACK,
-               MessageTypes.PINGRESP, MessageTypes.SLEEPRESP] },
+               PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.REGACK,
+               PacketTypes.PINGRESP, PacketTypes.SLEEPRESP] },
       0x92 : { "Packet identifier not found" :
-               [MessageTypes.PUBREL, MessageTypes.PUBCOMP] },
+               [PacketTypes.PUBREL, PacketTypes.PUBCOMP] },
  
-      0x93 : { "Receive maximum exceeded" : [MessageTypes.DISCONNECT] },
-      0x94 : { "Topic alias invalid"      : [MessageTypes.DISCONNECT] },
+      0x93 : { "Receive maximum exceeded" : [PacketTypes.DISCONNECT] },
+      0x94 : { "Topic alias invalid"      : [PacketTypes.DISCONNECT] },
       0x95 : { "Packet too large" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
-      0x96 : { "Packet rate too high"   : [MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
+      0x96 : { "Packet rate too high"   : [PacketTypes.DISCONNECT] },
       0x97 : { "Quota exceeded" : [
-               MessageTypes.REGACK, MessageTypes.SUBACK,
-               MessageTypes.DISCONNECT] },
-      0x98 : { "Administrative action"   : [MessageTypes.DISCONNECT] },
+               PacketTypes.REGACK, PacketTypes.SUBACK,
+               PacketTypes.DISCONNECT] },
+      0x98 : { "Administrative action"   : [PacketTypes.DISCONNECT] },
  
       0x99 : { "Payload format invalid" : [
-               MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.DISCONNECT] },
+               PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.DISCONNECT] },
  
       0x9A : { "Retain not supported" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x9B : { "QoS not supported" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x9C : { "Use another server" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x9D : { "Server moved" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
       0x9E : { "Shared subscription not supported" :
-               [MessageTypes.SUBACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.SUBACK, PacketTypes.DISCONNECT] },
       0x9F : { "Connection rate exceeded" :
-               [MessageTypes.CONNACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.CONNACK, PacketTypes.DISCONNECT] },
  
       # 0xA0 = 160 decimal; the spec table's hex column reads "0xAD" which is
       # a typo — the decimal ordering (0x9F, 0xA0, 0xA1, 0xA2) is unambiguous
-      0xA0 : { "Maximum connect time"  : [MessageTypes.DISCONNECT] },
+      0xA0 : { "Maximum connect time"  : [PacketTypes.DISCONNECT] },
  
       0xA1 : { "Subscription identifiers not supported" :
-               [MessageTypes.SUBACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.SUBACK, PacketTypes.DISCONNECT] },
       0xA2 : { "Wildcard subscription not supported" :
-               [MessageTypes.SUBACK, MessageTypes.DISCONNECT] },
+               [PacketTypes.SUBACK, PacketTypes.DISCONNECT] },
  
       # -----------------------------------------------------------------------
       # MQTT-SN-specific codes (>= 0xE6)
@@ -337,23 +337,23 @@ class ReasonCodes:
  
       # 0xE6: receiver expected a PROTECTION-encapsulated packet
       0xE6 : { "Only protection packet supported" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.PUBREL, MessageTypes.PUBCOMP,
-               MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.REGACK, MessageTypes.DISCONNECT] },
-      0xE7 : { "Protection scheme invalid"         : [MessageTypes.DISCONNECT] },
-      0xE8 : { "Unknown Sender Id"                 : [MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.PUBREL, PacketTypes.PUBCOMP,
+               PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.REGACK, PacketTypes.DISCONNECT] },
+      0xE7 : { "Protection scheme invalid"         : [PacketTypes.DISCONNECT] },
+      0xE8 : { "Unknown Sender Id"                 : [PacketTypes.DISCONNECT] },
  
       0xF0 : { "Unknown Topic Alias" : [
-               MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.SUBACK, MessageTypes.UNSUBACK,
-               MessageTypes.REGACK] },
+               PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.SUBACK, PacketTypes.UNSUBACK,
+               PacketTypes.REGACK] },
       0xF1 : { "Congestion" : [
-               MessageTypes.CONNACK, MessageTypes.PUBACK, MessageTypes.PUBREC,
-               MessageTypes.SUBACK, MessageTypes.REGACK] },
-      0xF2 : { "Protection packet not supported"          : [MessageTypes.DISCONNECT] },
-      0xF3 : { "Forwarder Encapsulation not supported"    : [MessageTypes.DISCONNECT] },
-      0xF4 : { "No Virtual Connection exists"             : [MessageTypes.DISCONNECT] },
+               PacketTypes.CONNACK, PacketTypes.PUBACK, PacketTypes.PUBREC,
+               PacketTypes.SUBACK, PacketTypes.REGACK] },
+      0xF2 : { "Protection packet not supported"          : [PacketTypes.DISCONNECT] },
+      0xF3 : { "Forwarder Encapsulation not supported"    : [PacketTypes.DISCONNECT] },
+      0xF4 : { "No Virtual Connection exists"             : [PacketTypes.DISCONNECT] },
     }
     if identifier == -1:
       self.set(aName)
@@ -368,7 +368,7 @@ class ConnectFlags:
   Bit 7: Reserved (must be 0)
   Bit 6: Allow Server Suggested Values (SrvSugg)
   Bit 5: Allow Network Address Changes (NetAddr)
-  Bit 4: Default Awake Messages Flag   (DAM)   — governs presence of DefaultAwakeMessages field
+  Bit 4: Default Awake Packets Flag   (DAM)   — governs presence of DefaultAwakeMessages field
   Bit 3: Session Expiry Flag           (SessExp) — governs presence of SessionExpiryInterval field
   Bit 2: Authentication Flag           (Auth)  — governs presence of AuthMethod/AuthData fields
   Bit 1: Will Flag                     (Will)  — governs presence of WillFlags/WillTopic/WillPayload
@@ -477,7 +477,7 @@ class WillFlags:
     return 1  # length of flags
 
 
-class Connects(Messages):
+class Connects(Packets):
   """
   CONNECT packet (Section 3.1).
 
@@ -499,13 +499,13 @@ class Connects(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "ConnectFlags", "WillFlags",
           "PacketId", "ProtocolVersion", "KeepAlive", "MaxPacketSize",
           "DefaultAwakeMessages", "SessionExpiryInterval",
           "WillTopic", "WillPayload",
           "AuthMethod", "AuthData", "ClientId"])
-    self.messageType = MessageTypes.CONNECT
+    self.packetType = PacketTypes.CONNECT
 
     self.ConnectFlags = ConnectFlags()
     self.WillFlags    = WillFlags()  # only transmitted when ConnectFlags.Will is set
@@ -532,7 +532,7 @@ class Connects(Messages):
     cf.SessExp = (self.SessionExpiryInterval is not None)
     cf.DAM     = (self.DefaultAwakeMessages is not None)
 
-    body = bytes([MessageTypes.CONNECT]) + cf.pack()
+    body = bytes([PacketTypes.CONNECT]) + cf.pack()
     if cf.Will:
       body += self.WillFlags.pack()
     body += writeInt16(self.PacketId)
@@ -564,9 +564,9 @@ class Connects(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.CONNECT
+    assert PacketType(buffer) == PacketTypes.CONNECT
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       pos = lenlen + 1  # byte after packet type
 
       # Connect Flags
@@ -587,7 +587,7 @@ class Connects(Messages):
       self.KeepAlive       = readInt16(buffer[pos:]);  pos += 2
       self.MaxPacketSize   = readInt16(buffer[pos:]);  pos += 2
 
-      # Optional: Default Awake Messages (1 byte)
+      # Optional: Default Awake Packets (1 byte)
       if cf.DAM:
         self.DefaultAwakeMessages = buffer[pos];  pos += 1
       else:
@@ -629,8 +629,8 @@ class Connects(Messages):
         self.AuthData   = None
 
       # Optional: Client Identifier (remainder of packet)
-      if pos < messagelen:
-        self.ClientId = buffer[pos:messagelen].decode("utf-8")
+      if pos < packetlen:
+        self.ClientId = buffer[pos:packetlen].decode("utf-8")
       else:
         self.ClientId = ""
 
@@ -671,11 +671,11 @@ class Connects(Messages):
            self.AuthData              == packet.AuthData and \
            self.ClientId              == packet.ClientId
 
-class Connacks(Messages):
+class Connacks(Packets):
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType", "Flags", "PacketId", "ReasonCode", "AssignedClientId"])
-    self.messageType = MessageTypes.CONNACK
+    object.__setattr__(self, "names", ["packetType", "Flags", "PacketId", "ReasonCode", "AssignedClientId"])
+    self.packetType = PacketTypes.CONNACK
     self.Flags = 0
     self.PacketId = 0
     self.ReasonCode = 0
@@ -685,15 +685,15 @@ class Connacks(Messages):
 
   def pack(self):
     msglen = 6 + len(self.AssignedClientId)
-    buffer = bytes([msglen, MessageTypes.CONNACK]) + bytes([self.Flags]) +\
+    buffer = bytes([msglen, PacketTypes.CONNACK]) + bytes([self.Flags]) +\
       writeInt16(self.PacketId) + bytes([self.ReasonCode]) + writeData(self.AssignedClientId)
     return buffer
 
   def unpack(self, buffer):
     assert len(buffer) >= 3
-    assert MessageType(buffer) == MessageTypes.CONNACK
+    assert PacketType(buffer) == PacketTypes.CONNACK
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       # self.ConnectFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       self.ReasonCode = buffer[lenlen + 4]
@@ -873,12 +873,12 @@ class PublishFlags:
         
         return True
 
-class Publishes(Messages):
+class Publishes(Packets):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
          ["Flags", "TopicAlias", "TopicName", "PacketId", "Data"])
-    object.__setattr__(self, "messageType", MessageTypes.PUBLISH)
+    object.__setattr__(self, "packetType", PacketTypes.PUBLISH)
     self.Flags = PublishFlags()
     self.TopicAlias = 0
     self.TopicName = None
@@ -888,7 +888,7 @@ class Publishes(Messages):
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([self.messageType]) + self.Flags.pack()
+    body = bytes([self.packetType]) + self.Flags.pack()
     if self.Flags.TopicType == self.Flags.TOPIC_TYPE_NAME:
       body += writeLenData(self.TopicName)
     else:
@@ -901,9 +901,9 @@ class Publishes(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.PUBLISH
+    assert PacketType(buffer) == PacketTypes.PUBLISH
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       curlen = lenlen + 1 # add byte for packet type
       self.Flags.unpack(buffer[curlen])
       curlen += 1
@@ -945,7 +945,7 @@ class Publishes(Messages):
            self.Data     == packet.Data
   
 
-class Acks(Messages):
+class Acks(Packets):
   """
   Base class for PUBACK, PUBREC, PUBREL, and PUBCOMP (Sections 3.6.4-3.6.7).
  
@@ -956,9 +956,9 @@ class Acks(Messages):
   (success); the receiver infers success from the reduced packet length.
   """
  
-  def __init__(self, messageType, buffer=None):
+  def __init__(self, packetType, buffer=None):
     object.__setattr__(self, "names", ["PacketId", "ReasonCode"])
-    object.__setattr__(self, "messageType", messageType)
+    object.__setattr__(self, "packetType", packetType)
     self.PacketId = 0
     self.ReasonCode = 0  # 0x00 = success; omitted from wire when success
     if buffer != None:
@@ -966,7 +966,7 @@ class Acks(Messages):
  
   def pack(self):
     # body: type(1) + packetid(2) + [reasoncode(1, if not success)]
-    body = bytes([self.messageType]) + writeInt16(self.PacketId)
+    body = bytes([self.packetType]) + writeInt16(self.PacketId)
     if self.ReasonCode != 0:
       body += bytes([self.ReasonCode])
     msglen = 1 + len(body)  # length field(1) + body
@@ -974,12 +974,12 @@ class Acks(Messages):
  
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == self.messageType
+    assert PacketType(buffer) == self.packetType
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
       # ReasonCode is optional: present when packet length allows (Section 3.6.4-7)
-      if messagelen > lenlen + 3:
+      if packetlen > lenlen + 3:
         self.ReasonCode = buffer[lenlen + 3]
       else:
         self.ReasonCode = 0  # absent means success
@@ -994,26 +994,26 @@ class Acks(Messages):
            ", ReasonCode=" + str(self.ReasonCode) + ")"
  
   def __eq__(self, packet):
-    return self.messageType == packet.messageType and \
+    return self.packetType == packet.packetType and \
            self.PacketId == packet.PacketId and \
            self.ReasonCode == packet.ReasonCode
  
  
 class Pubacks(Acks):
   def __init__(self, buffer=None):
-    Acks.__init__(self, MessageTypes.PUBACK, buffer)
+    Acks.__init__(self, PacketTypes.PUBACK, buffer)
  
 class Pubrecs(Acks):
   def __init__(self, buffer=None):
-    Acks.__init__(self, MessageTypes.PUBREC, buffer)
+    Acks.__init__(self, PacketTypes.PUBREC, buffer)
  
 class Pubrels(Acks):
   def __init__(self, buffer=None):
-    Acks.__init__(self, MessageTypes.PUBREL, buffer)
+    Acks.__init__(self, PacketTypes.PUBREL, buffer)
  
 class Pubcomps(Acks):
   def __init__(self, buffer=None):
-    Acks.__init__(self, MessageTypes.PUBCOMP, buffer)
+    Acks.__init__(self, PacketTypes.PUBCOMP, buffer)
  
 
 class SubscribeFlags:
@@ -1027,12 +1027,12 @@ class SubscribeFlags:
   Bits 1-0: Topic Type
   """
  
-  def __init__(self):
-    self.TopicType = 0        # 2 bits: 0=Session, 1=Predefined, 3=Filter
-    self.RetainHandling = 0   # 2 bits: 0, 1, or 2
-    self.RaP = False          # 1 bit: Retain as Published
-    self.QoS = 0              # 2 bits: 0, 1, or 2
-    self.NoLocal = False      # 1 bit
+  def __init__(self, QoS = 0, TopicType = 3, RetainHandling = 0, RaP = False, NoLocal = False):
+    self.TopicType = TopicType           # 2 bits: 0=Session, 1=Predefined, 3=Filter
+    self.RetainHandling = RetainHandling # 2 bits: 0, 1, or 2
+    self.RaP = RaP                       # 1 bit: Retain as Published
+    self.QoS = QoS                       # 2 bits: 0, 1, or 2
+    self.NoLocal = NoLocal               # 1 bit
  
   def __eq__(self, flags):
     return self.TopicType == flags.TopicType and \
@@ -1078,14 +1078,14 @@ class SubscribeFlags:
     self.TopicType      = b0 & 0x03
     return 1  # length of flags
 
-class Subscribes(Messages):
+class Subscribes(Packets):
  
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "SubscribeFlags",
           "PacketId", "TopicAlias", "TopicFilter"])
-    self.messageType = MessageTypes.SUBSCRIBE
+    self.packetType = PacketTypes.SUBSCRIBE
     self.SubscribeFlags = SubscribeFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # used when TopicType is Session (0) or Predefined (1)
@@ -1101,7 +1101,7 @@ class Subscribes(Messages):
     else:                # Session (0) or Predefined (1): 2-byte alias
       topic_data = writeInt16(self.TopicAlias)
       msglen = 1 + 1 + 1 + 2 + 2               # len(1)+type(1)+flags(1)+packetid(2)+alias(2)
-    buffer = bytes([msglen, MessageTypes.SUBSCRIBE]) + \
+    buffer = bytes([msglen, PacketTypes.SUBSCRIBE]) + \
              self.SubscribeFlags.pack() + \
              writeInt16(self.PacketId) + \
              topic_data
@@ -1109,14 +1109,14 @@ class Subscribes(Messages):
  
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SUBSCRIBE
+    assert PacketType(buffer) == PacketTypes.SUBSCRIBE
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.SubscribeFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       topic_type = self.SubscribeFlags.TopicType
       if topic_type == 3:  # Topic Filter: fills to end of packet
-        self.TopicFilter = buffer[lenlen + 4:messagelen].decode("utf-8")
+        self.TopicFilter = buffer[lenlen + 4:packetlen].decode("utf-8")
         self.TopicAlias = 0
       else:                # Session (0) or Predefined (1): 2-byte alias
         self.TopicAlias = readInt16(buffer[lenlen + 4:])
@@ -1177,14 +1177,14 @@ class SubackFlags:
     self.TopicType      = b0 & 0x03
     return 1  # length of flags
  
-class Subacks(Messages):
+class Subacks(Packets):
  
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "SubackFlags",
           "PacketId", "TopicAlias", "ReasonCode"])
-    self.messageType = MessageTypes.SUBACK
+    self.packetType = PacketTypes.SUBACK
     self.SubackFlags = SubackFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # present only when SubackFlags.TopicAliasFlag is True
@@ -1194,7 +1194,7 @@ class Subacks(Messages):
  
   def pack(self):
     # body: type(1) + flags(1) + packetid(2) + [alias(2)] + [reason_code(1)]
-    body = bytes([MessageTypes.SUBACK]) + \
+    body = bytes([PacketTypes.SUBACK]) + \
            self.SubackFlags.pack() + \
            writeInt16(self.PacketId)
     if self.SubackFlags.TopicAliasFlag:
@@ -1208,9 +1208,9 @@ class Subacks(Messages):
  
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SUBACK
+    assert PacketType(buffer) == PacketTypes.SUBACK
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.SubackFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       pos = lenlen + 4  # next byte after packetid
@@ -1220,7 +1220,7 @@ class Subacks(Messages):
       else:
         self.TopicAlias = 0
       # Reason Code: present when packet is long enough (Section 3.8.5)
-      if pos < messagelen:
+      if pos < packetlen:
         self.ReasonCode = buffer[pos]
       else:
         self.ReasonCode = 0  # absent means success
@@ -1276,7 +1276,7 @@ class UnsubscribeFlags:
     return 1  # length of flags
 
 
-class Unsubscribes(Messages):
+class Unsubscribes(Packets):
   """
   UNSUBSCRIBE packet (Section 3.9).
 
@@ -1287,10 +1287,10 @@ class Unsubscribes(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "UnsubscribeFlags",
           "PacketId", "TopicAlias", "TopicFilter"])
-    self.messageType = MessageTypes.UNSUBSCRIBE
+    self.packetType = PacketTypes.UNSUBSCRIBE
     self.UnsubscribeFlags = UnsubscribeFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # used when TopicType is Session (0) or Predefined (1)
@@ -1306,7 +1306,7 @@ class Unsubscribes(Messages):
     else:                # Session (0) or Predefined (1): 2-byte alias
       topic_data = writeInt16(self.TopicAlias)
       msglen = 1 + 1 + 1 + 2 + 2               # len(1)+type(1)+flags(1)+packetid(2)+alias(2)
-    buffer = bytes([msglen, MessageTypes.UNSUBSCRIBE]) + \
+    buffer = bytes([msglen, PacketTypes.UNSUBSCRIBE]) + \
              self.UnsubscribeFlags.pack() + \
              writeInt16(self.PacketId) + \
              topic_data
@@ -1314,14 +1314,14 @@ class Unsubscribes(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.UNSUBSCRIBE
+    assert PacketType(buffer) == PacketTypes.UNSUBSCRIBE
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.UnsubscribeFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       topic_type = self.UnsubscribeFlags.TopicType
       if topic_type == 3:  # Topic Filter: fills to end of packet
-        self.TopicFilter = buffer[lenlen + 4:messagelen].decode("utf-8")
+        self.TopicFilter = buffer[lenlen + 4:packetlen].decode("utf-8")
         self.TopicAlias = 0
       else:                # Session (0) or Predefined (1): 2-byte alias
         self.TopicAlias = readInt16(buffer[lenlen + 4:])
@@ -1343,7 +1343,7 @@ class Unsubscribes(Messages):
            self.TopicFilter == packet.TopicFilter
 
 
-class Unsubacks(Messages):
+class Unsubacks(Packets):
   """
   UNSUBACK packet (Section 3.10).
 
@@ -1354,8 +1354,8 @@ class Unsubacks(Messages):
   """
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType", "PacketId", "ReasonCode"])
-    self.messageType = MessageTypes.UNSUBACK
+    object.__setattr__(self, "names", ["packetType", "PacketId", "ReasonCode"])
+    self.packetType = PacketTypes.UNSUBACK
     self.PacketId = 0
     self.ReasonCode = 0  # 0x00 = success; omitted from wire when success
     if buffer != None:
@@ -1363,7 +1363,7 @@ class Unsubacks(Messages):
 
   def pack(self):
     # body: type(1) + packetid(2) + [reasoncode(1, if not success)]
-    body = bytes([MessageTypes.UNSUBACK]) + writeInt16(self.PacketId)
+    body = bytes([PacketTypes.UNSUBACK]) + writeInt16(self.PacketId)
     if self.ReasonCode != 0:
       body += bytes([self.ReasonCode])
     msglen = 1 + len(body)  # length field(1) + body
@@ -1371,12 +1371,12 @@ class Unsubacks(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.UNSUBACK
+    assert PacketType(buffer) == PacketTypes.UNSUBACK
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
       # ReasonCode is optional: present when packet length allows (Section 3.10.3)
-      if messagelen > lenlen + 3:
+      if packetlen > lenlen + 3:
         self.ReasonCode = buffer[lenlen + 3]
       else:
         self.ReasonCode = 0  # absent means success
@@ -1393,7 +1393,7 @@ class Unsubacks(Messages):
            self.ReasonCode == packet.ReasonCode
 
 
-class Pingreqs(Messages):
+class Pingreqs(Packets):
   """
   PINGREQ packet (Section 3.11).
 
@@ -1401,23 +1401,23 @@ class Pingreqs(Messages):
   """
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType", "PacketId"])
-    self.messageType = MessageTypes.PINGREQ
+    object.__setattr__(self, "names", ["packetType", "PacketId"])
+    self.packetType = PacketTypes.PINGREQ
     self.PacketId = 0
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
     # body: type(1) + packetid(2)
-    body = bytes([MessageTypes.PINGREQ]) + writeInt16(self.PacketId)
+    body = bytes([PacketTypes.PINGREQ]) + writeInt16(self.PacketId)
     msglen = 1 + len(body)  # length field(1) + body
     return bytes([msglen]) + body
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.PINGREQ
+    assert PacketType(buffer) == PacketTypes.PINGREQ
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
     except:
       logger.exception("Validating pingreq packet")
@@ -1430,7 +1430,7 @@ class Pingreqs(Messages):
     return self.PacketId == packet.PacketId
 
 
-class Pingresps(Messages):
+class Pingresps(Packets):
   """
   PINGRESP packet (Section 3.12).
 
@@ -1441,8 +1441,8 @@ class Pingresps(Messages):
   """
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType", "PacketId", "AppMsgsRemaining"])
-    self.messageType = MessageTypes.PINGRESP
+    object.__setattr__(self, "names", ["packetType", "PacketId", "AppMsgsRemaining"])
+    self.packetType = PacketTypes.PINGRESP
     self.PacketId = 0
     self.AppMsgsRemaining = None  # None means field is absent from wire
     if buffer != None:
@@ -1450,7 +1450,7 @@ class Pingresps(Messages):
 
   def pack(self):
     # body: type(1) + packetid(2) + [AppMsgsRemaining(1)]
-    body = bytes([MessageTypes.PINGRESP]) + writeInt16(self.PacketId)
+    body = bytes([PacketTypes.PINGRESP]) + writeInt16(self.PacketId)
     if self.AppMsgsRemaining is not None:
       body += bytes([self.AppMsgsRemaining])
     msglen = 1 + len(body)  # length field(1) + body
@@ -1458,12 +1458,12 @@ class Pingresps(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.PINGRESP
+    assert PacketType(buffer) == PacketTypes.PINGRESP
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
       # AppMsgsRemaining is optional (Section 3.12.3)
-      if messagelen > lenlen + 3:
+      if packetlen > lenlen + 3:
         self.AppMsgsRemaining = buffer[lenlen + 3]
       else:
         self.AppMsgsRemaining = None
@@ -1529,7 +1529,7 @@ class DisconnectFlags:
     return 1  # length of flags
 
 
-class Disconnects(Messages):
+class Disconnects(Packets):
   """
   DISCONNECT packet (Section 3.13).
 
@@ -1544,10 +1544,10 @@ class Disconnects(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "DisconnectFlags",
           "PacketId", "ReasonCode", "SessionExpiryInterval", "ReasonString"])
-    self.messageType = MessageTypes.DISCONNECT
+    self.packetType = PacketTypes.DISCONNECT
     self.DisconnectFlags = DisconnectFlags()
     self.PacketId = 0
     self.ReasonCode = 0                 # 0x00 = Normal disconnection
@@ -1562,7 +1562,7 @@ class Disconnects(Messages):
     flags.PacketIdFlag      = (self.PacketId != 0)
     flags.ReasonCodeFlag    = (self.ReasonCode != 0)
     flags.SessionExpiryFlag = (self.SessionExpiryInterval is not None)
-    body = bytes([MessageTypes.DISCONNECT]) + flags.pack()
+    body = bytes([PacketTypes.DISCONNECT]) + flags.pack()
     if flags.PacketIdFlag:
       body += writeInt16(self.PacketId)
     if flags.ReasonCodeFlag:
@@ -1578,9 +1578,9 @@ class Disconnects(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.DISCONNECT
+    assert PacketType(buffer) == PacketTypes.DISCONNECT
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.DisconnectFlags.unpack(buffer[lenlen + 1])
       flags = self.DisconnectFlags
       pos = lenlen + 2  # byte after flags
@@ -1601,8 +1601,8 @@ class Disconnects(Messages):
       else:
         self.SessionExpiryInterval = None
       # ReasonString is optional remainder of packet
-      if pos < messagelen:
-        self.ReasonString = buffer[pos:messagelen].decode("utf-8")
+      if pos < packetlen:
+        self.ReasonString = buffer[pos:packetlen].decode("utf-8")
       else:
         self.ReasonString = None
     except:
@@ -1626,7 +1626,7 @@ class Disconnects(Messages):
            self.ReasonString == packet.ReasonString
 
 
-class Auths(Messages):
+class Auths(Packets):
   """
   AUTH packet (Section 3.3).
 
@@ -1639,8 +1639,8 @@ class Auths(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "PacketId", "ReasonCode", "AuthMethod", "AuthData"])
-    self.messageType = MessageTypes.AUTH
+         ["packetType", "PacketId", "ReasonCode", "AuthMethod", "AuthData"])
+    self.packetType = PacketTypes.AUTH
     self.PacketId = 0
     self.ReasonCode = 0     # 0x00 = Success
     self.AuthMethod = ""
@@ -1650,7 +1650,7 @@ class Auths(Messages):
 
   def pack(self):
     method_bytes = writeData(self.AuthMethod)
-    body = bytes([MessageTypes.AUTH]) + \
+    body = bytes([PacketTypes.AUTH]) + \
            writeInt16(self.PacketId) + \
            bytes([self.ReasonCode]) + \
            writeInt16(len(method_bytes)) + \
@@ -1661,16 +1661,16 @@ class Auths(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.AUTH
+    assert PacketType(buffer) == PacketTypes.AUTH
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
       self.ReasonCode = buffer[lenlen + 3]
       method_len = readInt16(buffer[lenlen + 4:])
       pos = lenlen + 6
       self.AuthMethod = buffer[pos:pos + method_len].decode("utf-8")
       pos += method_len
-      self.AuthData = buffer[pos:messagelen]
+      self.AuthData = buffer[pos:packetlen]
     except:
       logger.exception("Validating auth packet")
       raise
@@ -1721,7 +1721,7 @@ class RegisterFlags:
     return 1  # length of flags
 
 
-class Registers(Messages):
+class Registers(Packets):
   """
   REGISTER packet (Section 3.4).
 
@@ -1732,8 +1732,8 @@ class Registers(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "RegisterFlags", "PacketId", "TopicAlias", "TopicName"])
-    self.messageType = MessageTypes.REGISTER
+         ["packetType", "RegisterFlags", "PacketId", "TopicAlias", "TopicName"])
+    self.packetType = PacketTypes.REGISTER
     self.RegisterFlags = RegisterFlags()
     self.PacketId = 0
     self.TopicAlias = 0   # present only when RegisterFlags.TopicAliasFlag is True
@@ -1744,7 +1744,7 @@ class Registers(Messages):
   def pack(self):
     self.RegisterFlags.TopicAliasFlag = (self.TopicAlias != 0)
     topic_bytes = writeData(self.TopicName)
-    body = bytes([MessageTypes.REGISTER]) + \
+    body = bytes([PacketTypes.REGISTER]) + \
            self.RegisterFlags.pack() + \
            writeInt16(self.PacketId)
     if self.RegisterFlags.TopicAliasFlag:
@@ -1755,9 +1755,9 @@ class Registers(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.REGISTER
+    assert PacketType(buffer) == PacketTypes.REGISTER
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.RegisterFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       pos = lenlen + 4  # byte after packetid
@@ -1766,7 +1766,7 @@ class Registers(Messages):
         pos += 2
       else:
         self.TopicAlias = 0
-      self.TopicName = buffer[pos:messagelen].decode("utf-8")
+      self.TopicName = buffer[pos:packetlen].decode("utf-8")
     except:
       logger.exception("Validating register packet")
       raise
@@ -1822,7 +1822,7 @@ class RegackFlags:
     return 1  # length of flags
 
 
-class Regacks(Messages):
+class Regacks(Packets):
   """
   REGACK packet (Section 3.5).
 
@@ -1833,8 +1833,8 @@ class Regacks(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "RegackFlags", "PacketId", "TopicAlias", "ReasonCode"])
-    self.messageType = MessageTypes.REGACK
+         ["packetType", "RegackFlags", "PacketId", "TopicAlias", "ReasonCode"])
+    self.packetType = PacketTypes.REGACK
     self.RegackFlags = RegackFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # present only when RegackFlags.TopicAliasFlag is True
@@ -1844,7 +1844,7 @@ class Regacks(Messages):
 
   def pack(self):
     # body: type(1) + flags(1) + packetid(2) + [alias(2)] + [reasoncode(1)]
-    body = bytes([MessageTypes.REGACK]) + \
+    body = bytes([PacketTypes.REGACK]) + \
            self.RegackFlags.pack() + \
            writeInt16(self.PacketId)
     if self.RegackFlags.TopicAliasFlag:
@@ -1856,9 +1856,9 @@ class Regacks(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.REGACK
+    assert PacketType(buffer) == PacketTypes.REGACK
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.RegackFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       pos = lenlen + 4  # byte after packetid
@@ -1868,7 +1868,7 @@ class Regacks(Messages):
       else:
         self.TopicAlias = 0
       # ReasonCode: present when packet is long enough (Section 3.5.5)
-      if pos < messagelen:
+      if pos < packetlen:
         self.ReasonCode = buffer[pos]
       else:
         self.ReasonCode = 0  # absent means success
@@ -1932,7 +1932,7 @@ class PubwosFlags:
     return 1
 
 
-class Pubwoses(Messages):
+class Pubwoses(Packets):
   """
   PUBWOS (Publish Without Session) packet (Section 3.6.1).
 
@@ -1945,8 +1945,8 @@ class Pubwoses(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "PubwosFlags", "TopicAlias", "TopicName", "Data"])
-    self.messageType = MessageTypes.PUBWOS
+         ["packetType", "PubwosFlags", "TopicAlias", "TopicName", "Data"])
+    self.packetType = PacketTypes.PUBWOS
     self.PubwosFlags = PubwosFlags()
     self.TopicAlias  = 0    # used when TopicType is Predefined (1)
     self.TopicName   = b""  # used when TopicType is Name (3)
@@ -1955,7 +1955,7 @@ class Pubwoses(Messages):
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([MessageTypes.PUBWOS]) + self.PubwosFlags.pack()
+    body = bytes([PacketTypes.PUBWOS]) + self.PubwosFlags.pack()
     if self.PubwosFlags.TopicType == 3:  # Topic Name
       name = writeData(self.TopicName)
       body += writeInt16(len(name)) + name
@@ -1967,9 +1967,9 @@ class Pubwoses(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.PUBWOS
+    assert PacketType(buffer) == PacketTypes.PUBWOS
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.PubwosFlags.unpack(buffer[lenlen + 1])
       pos = lenlen + 2
       if self.PubwosFlags.TopicType == 3:  # Topic Name
@@ -1979,7 +1979,7 @@ class Pubwoses(Messages):
       else:                                 # Predefined alias
         self.TopicAlias = readInt16(buffer[pos:]);  pos += 2
         self.TopicName  = b""
-      self.Data = buffer[pos:messagelen]
+      self.Data = buffer[pos:packetlen]
     except:
       logger.exception("Validating pubwos packet")
       raise
@@ -2033,7 +2033,7 @@ class SleepreqFlags:
     return 1
 
 
-class Sleepreqs(Messages):
+class Sleepreqs(Packets):
   """
   SLEEPREQ packet (Section 3.15).
 
@@ -2044,8 +2044,8 @@ class Sleepreqs(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "SleepreqFlags", "PacketId", "SleepDuration"])
-    self.messageType   = MessageTypes.SLEEPREQ
+         ["packetType", "SleepreqFlags", "PacketId", "SleepDuration"])
+    self.packetType   = PacketTypes.SLEEPREQ
     self.SleepreqFlags = SleepreqFlags()
     self.PacketId      = 0
     self.SleepDuration = 0  # seconds; must be > 0 per spec
@@ -2054,7 +2054,7 @@ class Sleepreqs(Messages):
 
   def pack(self):
     sd = self.SleepDuration
-    body = bytes([MessageTypes.SLEEPREQ]) + \
+    body = bytes([PacketTypes.SLEEPREQ]) + \
            self.SleepreqFlags.pack() + \
            writeInt16(self.PacketId) + \
            bytes([(sd >> 24) & 0xFF, (sd >> 16) & 0xFF,
@@ -2063,9 +2063,9 @@ class Sleepreqs(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SLEEPREQ
+    assert PacketType(buffer) == PacketTypes.SLEEPREQ
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.SleepreqFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       pos = lenlen + 4
@@ -2119,7 +2119,7 @@ class SleeprespFlags:
     return 1
 
 
-class Sleepresps(Messages):
+class Sleepresps(Packets):
   """
   SLEEPRESP packet (Section 3.16).
 
@@ -2133,9 +2133,9 @@ class Sleepresps(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "SleeprespFlags", "PacketId",
+         ["packetType", "SleeprespFlags", "PacketId",
           "SleepDuration", "ReasonCode"])
-    self.messageType    = MessageTypes.SLEEPRESP
+    self.packetType    = PacketTypes.SLEEPRESP
     self.SleeprespFlags = SleeprespFlags()
     self.PacketId       = 0
     self.SleepDuration  = None  # None = absent (SleepDur flag clear)
@@ -2145,7 +2145,7 @@ class Sleepresps(Messages):
 
   def pack(self):
     self.SleeprespFlags.SleepDur = (self.SleepDuration is not None)
-    body = bytes([MessageTypes.SLEEPRESP]) + \
+    body = bytes([PacketTypes.SLEEPRESP]) + \
            self.SleeprespFlags.pack() + \
            writeInt16(self.PacketId)
     if self.SleeprespFlags.SleepDur:
@@ -2158,9 +2158,9 @@ class Sleepresps(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SLEEPRESP
+    assert PacketType(buffer) == PacketTypes.SLEEPRESP
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.SleeprespFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
       pos = lenlen + 4
@@ -2171,7 +2171,7 @@ class Sleepresps(Messages):
       else:
         self.SleepDuration = None
       # ReasonCode: optional, inferred from remaining packet length (Section 3.16.4)
-      if pos < messagelen:
+      if pos < packetlen:
         self.ReasonCode = buffer[pos]
       else:
         self.ReasonCode = 0
@@ -2193,7 +2193,7 @@ class Sleepresps(Messages):
            self.ReasonCode     == packet.ReasonCode
 
 
-class Wakeups(Messages):
+class Wakeups(Packets):
   """
   WAKEUP packet (Section 3.14).
 
@@ -2203,18 +2203,18 @@ class Wakeups(Messages):
   """
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType"])
-    self.messageType = MessageTypes.WAKEUP
+    object.__setattr__(self, "names", ["packetType"])
+    self.packetType = PacketTypes.WAKEUP
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([MessageTypes.WAKEUP])
+    body = bytes([PacketTypes.WAKEUP])
     return bytes([1 + len(body)]) + body
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.WAKEUP
+    assert PacketType(buffer) == PacketTypes.WAKEUP
     # No data fields to read
 
   def __str__(self):
@@ -2224,7 +2224,7 @@ class Wakeups(Messages):
     return True  # no variable fields; any two Wakeup packets are equal
 
 
-class Advertises(Messages):
+class Advertises(Packets):
   """
   ADVERTISE packet (Section 3.20.1).
 
@@ -2235,23 +2235,23 @@ class Advertises(Messages):
   """
 
   def __init__(self, buffer=None):
-    object.__setattr__(self, "names", ["messageType", "GatewayId", "Duration"])
-    self.messageType = MessageTypes.ADVERTISE
+    object.__setattr__(self, "names", ["packetType", "GatewayId", "Duration"])
+    self.packetType = PacketTypes.ADVERTISE
     self.GatewayId   = 0   # 1 byte: unique gateway identifier
     self.Duration    = 0   # 2 bytes: seconds until next ADVERTISE
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([MessageTypes.ADVERTISE, self.GatewayId]) + \
+    body = bytes([PacketTypes.ADVERTISE, self.GatewayId]) + \
            writeInt16(self.Duration)
     return bytes([1 + len(body)]) + body
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.ADVERTISE
+    assert PacketType(buffer) == PacketTypes.ADVERTISE
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.GatewayId = buffer[lenlen + 1]
       self.Duration  = readInt16(buffer[lenlen + 2:])
     except:
@@ -2267,7 +2267,7 @@ class Advertises(Messages):
            self.Duration  == packet.Duration
 
 
-class Searchgws(Messages):
+class Searchgws(Packets):
   """
   SEARCHGW packet (Section 3.20.2).
 
@@ -2279,25 +2279,25 @@ class Searchgws(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "AdditionalNetworkInfo"])
-    self.messageType            = MessageTypes.SEARCHGW
+         ["packetType", "AdditionalNetworkInfo"])
+    self.packetType            = PacketTypes.SEARCHGW
     self.AdditionalNetworkInfo  = b""  # b"" means absent
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([MessageTypes.SEARCHGW]) + writeData(self.AdditionalNetworkInfo)
+    body = bytes([PacketTypes.SEARCHGW]) + writeData(self.AdditionalNetworkInfo)
     return bytes([1 + len(body)]) + body
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SEARCHGW
+    assert PacketType(buffer) == PacketTypes.SEARCHGW
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       pos = lenlen + 1  # byte after type
       # AdditionalNetworkInfo is optional; fills remainder of packet
-      if pos < messagelen:
-        self.AdditionalNetworkInfo = buffer[pos:messagelen]
+      if pos < packetlen:
+        self.AdditionalNetworkInfo = buffer[pos:packetlen]
       else:
         self.AdditionalNetworkInfo = b""
     except:
@@ -2312,7 +2312,7 @@ class Searchgws(Messages):
     return self.AdditionalNetworkInfo == packet.AdditionalNetworkInfo
 
 
-class Gwinfos(Messages):
+class Gwinfos(Packets):
   """
   GWINFO packet (Section 3.20.3).
 
@@ -2324,28 +2324,28 @@ class Gwinfos(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "GatewayId", "GatewayAddress"])
-    self.messageType    = MessageTypes.GWINFO
+         ["packetType", "GatewayId", "GatewayAddress"])
+    self.packetType    = PacketTypes.GWINFO
     self.GatewayId      = 0   # 1 byte
     self.GatewayAddress = b""  # b"" means absent (packet sent by gateway)
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
-    body = bytes([MessageTypes.GWINFO, self.GatewayId]) + \
+    body = bytes([PacketTypes.GWINFO, self.GatewayId]) + \
            writeData(self.GatewayAddress)
     return bytes([1 + len(body)]) + body
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.GWINFO
+    assert PacketType(buffer) == PacketTypes.GWINFO
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       self.GatewayId = buffer[lenlen + 1]
       pos = lenlen + 2
       # GatewayAddress is optional; fills remainder of packet (Section 3.20.3.3)
-      if pos < messagelen:
-        self.GatewayAddress = buffer[pos:messagelen]
+      if pos < packetlen:
+        self.GatewayAddress = buffer[pos:packetlen]
       else:
         self.GatewayAddress = b""
     except:
@@ -2361,7 +2361,7 @@ class Gwinfos(Messages):
            self.GatewayAddress == packet.GatewayAddress
 
 
-class ForwarderEncapsulations(Messages):
+class ForwarderEncapsulations(Packets):
   """
   Forwarder Encapsulation packet (Section 3.19).
 
@@ -2380,8 +2380,8 @@ class ForwarderEncapsulations(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "ClientAddressingInfo", "MQTTSNPacket"])
-    self.messageType           = MessageTypes.FOWARDER_ENCAPSULATION
+         ["packetType", "ClientAddressingInfo", "MQTTSNPacket"])
+    self.packetType           = PacketTypes.FOWARDER_ENCAPSULATION
     self.ClientAddressingInfo  = b""   # variable-length addressing data
     self.MQTTSNPacket          = b""   # raw bytes of the encapsulated packet
     if buffer != None:
@@ -2389,16 +2389,16 @@ class ForwarderEncapsulations(Messages):
 
   def pack(self):
     # Outer section: type(1) + ClientAddressingInfo
-    outer_body = bytes([MessageTypes.FOWARDER_ENCAPSULATION]) + \
+    outer_body = bytes([PacketTypes.FOWARDER_ENCAPSULATION]) + \
                  writeData(self.ClientAddressingInfo)
     outer_len = 1 + len(outer_body)  # length field(1) + outer_body
     return bytes([outer_len]) + outer_body + writeData(self.MQTTSNPacket)
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.FOWARDER_ENCAPSULATION
+    assert PacketType(buffer) == PacketTypes.FOWARDER_ENCAPSULATION
     try:
-      outer_len, lenlen = MessageLens.decode(buffer)
+      outer_len, lenlen = PacketLens.decode(buffer)
       # ClientAddressingInfo occupies the bytes between the type byte and
       # the end of the outer header (outer_len bytes total from buffer[0]).
       addr_start = lenlen + 1          # byte after type
@@ -2420,7 +2420,7 @@ class ForwarderEncapsulations(Messages):
            self.MQTTSNPacket         == packet.MQTTSNPacket
 
 
-class SessionEncapsulations(Messages):
+class SessionEncapsulations(Packets):
   """
   Connection (Session) Encapsulation packet (Section 3.18).
 
@@ -2440,8 +2440,8 @@ class SessionEncapsulations(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType", "ClientIdentifier", "MQTTSNPacket"])
-    self.messageType      = MessageTypes.SESSION_ENCAPSULATION
+         ["packetType", "ClientIdentifier", "MQTTSNPacket"])
+    self.packetType      = PacketTypes.SESSION_ENCAPSULATION
     self.ClientIdentifier = ""    # UTF-8 string; the virtual-connection client ID
     self.MQTTSNPacket     = b""   # raw bytes of the encapsulated packet
     if buffer != None:
@@ -2449,15 +2449,15 @@ class SessionEncapsulations(Messages):
 
   def pack(self):
     cid_bytes = writeData(self.ClientIdentifier)
-    outer_body = bytes([MessageTypes.SESSION_ENCAPSULATION]) + cid_bytes
+    outer_body = bytes([PacketTypes.SESSION_ENCAPSULATION]) + cid_bytes
     outer_len  = 1 + len(outer_body)  # length field(1) + outer_body
     return bytes([outer_len]) + outer_body + writeData(self.MQTTSNPacket)
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.SESSION_ENCAPSULATION
+    assert PacketType(buffer) == PacketTypes.SESSION_ENCAPSULATION
     try:
-      outer_len, lenlen = MessageLens.decode(buffer)
+      outer_len, lenlen = PacketLens.decode(buffer)
       cid_start = lenlen + 1   # byte after type
       cid_end   = outer_len    # up to end of outer header
       self.ClientIdentifier = buffer[cid_start:cid_end].decode("utf-8")
@@ -2551,7 +2551,7 @@ class ProtectionFlags:
     return self.COUNTER_BYTES.get(self.CounterLen, 0)
 
 
-class ProtectionEncapsulations(Messages):
+class ProtectionEncapsulations(Packets):
   """
   Protection Encapsulation packet (Section 3.17).
 
@@ -2577,12 +2577,12 @@ class ProtectionEncapsulations(Messages):
 
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
-         ["messageType",
+         ["packetType",
           "ProtectionFlags", "ProtectionScheme",
           "SenderIdentifier", "Random",
           "CryptographicMaterial", "MonotonicCounter",
           "ProtectedMQTTSNPacket", "AuthenticationTag"])
-    self.messageType           = MessageTypes.PROTECTION_ENCAPSULATION
+    self.packetType           = PacketTypes.PROTECTION_ENCAPSULATION
     self.ProtectionFlags       = ProtectionFlags()
     self.ProtectionScheme      = 0x00    # default: HMAC-SHA256
     self.SenderIdentifier      = b'\x00' * 8  # 8 bytes, e.g. MAC address
@@ -2600,7 +2600,7 @@ class ProtectionEncapsulations(Messages):
     pf.CryptoLen  = {0: 0, 2: 1, 4: 2, 12: 3}[len(self.CryptographicMaterial)]
     pf.CounterLen = {0: 0, 2: 1, 4: 2}[len(self.MonotonicCounter)]
 
-    body = bytes([MessageTypes.PROTECTION_ENCAPSULATION]) + \
+    body = bytes([PacketTypes.PROTECTION_ENCAPSULATION]) + \
            pf.pack() + \
            bytes([self.ProtectionScheme]) + \
            writeData(self.SenderIdentifier) + \
@@ -2620,9 +2620,9 @@ class ProtectionEncapsulations(Messages):
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert MessageType(buffer) == MessageTypes.PROTECTION_ENCAPSULATION
+    assert PacketType(buffer) == PacketTypes.PROTECTION_ENCAPSULATION
     try:
-      messagelen, lenlen = MessageLens.decode(buffer)
+      packetlen, lenlen = PacketLens.decode(buffer)
       pos = lenlen + 1   # byte after type
 
       self.ProtectionFlags.unpack(buffer[pos]);  pos += 1
@@ -2652,8 +2652,8 @@ class ProtectionEncapsulations(Messages):
         tag_bytes = None   # resolved below
 
       # Read the ProtectedMQTTSNPacket using its own length field
-      if pos < messagelen:
-        inner_len, inner_lenlen = MessageLens.decode(buffer[pos:])
+      if pos < packetlen:
+        inner_len, inner_lenlen = PacketLens.decode(buffer[pos:])
         self.ProtectedMQTTSNPacket = buffer[pos:pos + inner_len]
         pos += inner_len
       else:
@@ -2663,7 +2663,7 @@ class ProtectionEncapsulations(Messages):
       if tag_bytes is not None:
         self.AuthenticationTag = buffer[pos:pos + tag_bytes]
       else:
-        self.AuthenticationTag = buffer[pos:messagelen]
+        self.AuthenticationTag = buffer[pos:packetlen]
 
     except:
       logger.exception("Validating protection encapsulation packet")
@@ -2723,13 +2723,13 @@ classes = [None,           # 0   reserved
 
 # Sparse dict for the three high-value encapsulation type codes
 encapsulation_classes = {
-    MessageTypes.FOWARDER_ENCAPSULATION:    ForwarderEncapsulations,
-    MessageTypes.SESSION_ENCAPSULATION:     SessionEncapsulations,
-    MessageTypes.PROTECTION_ENCAPSULATION:  ProtectionEncapsulations,
+    PacketTypes.FOWARDER_ENCAPSULATION:    ForwarderEncapsulations,
+    PacketTypes.SESSION_ENCAPSULATION:     SessionEncapsulations,
+    PacketTypes.PROTECTION_ENCAPSULATION:  ProtectionEncapsulations,
 }
 
 def unpackPacket(buffer, maximumPacketSize=MAX_PACKET_SIZE):
-  packet_type = MessageType(buffer)
+  packet_type = PacketType(buffer)
   if packet_type is None:
     return None
   # Check sparse encapsulation types first

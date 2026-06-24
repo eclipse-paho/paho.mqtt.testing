@@ -7,7 +7,7 @@ class Test(unittest.TestCase):
     def testPackets(self):
       for packet in [x for x in MQTTSN.classes if x != None]:
         inpacket = packet()
-        print(MQTTSN.Messages.Names[inpacket.messageType])
+        print(MQTTSN.Packets.Names[inpacket.packetType])
         outpacket = packet()
         buf = inpacket.pack()
         outpacket.unpack(buf)

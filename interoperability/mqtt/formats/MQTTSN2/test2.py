@@ -36,7 +36,7 @@ Coverage:
 import MQTTSN2
 import sys
 
-MT = MQTTSN2.MessageTypes
+MT = MQTTSN2.PacketTypes
 
 # ---------------------------------------------------------------------------
 # Test infrastructure
@@ -419,7 +419,7 @@ for cls, label in dispatch_cases:
   check(f"unpackPacket {label}", isinstance(p2, cls))
 
 check("unpackPacket unknown type returns None",
-      MQTTSN2.unpackPacket(bytes([3, 0xFF, 0x00])) is None)
+      MQTTSN2.unpackPacket(bytes([3, 0xFC, 0x00])) is None)
 
 
 # ===========================================================================

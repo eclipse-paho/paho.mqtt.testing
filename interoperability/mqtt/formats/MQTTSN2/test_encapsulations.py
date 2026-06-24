@@ -181,12 +181,12 @@ class TestForwarderEncapsulation(unittest.TestCase):
         recovered_inner = MQTTSN2.unpackPacket(pkt2.MQTTSNPacket)
         self.assertIsInstance(recovered_inner, MQTTSN2.Publishes)
 
-    # --- messageType and dispatch ---
+    # --- packetType and dispatch ---
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.ForwarderEncapsulations()
-        self.assertEqual(pkt.messageType,
-                         MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION)
+        self.assertEqual(pkt.packetType,
+                         MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION)
 
     def test_unpack_packet_dispatch(self):
         pkt  = MQTTSN2.ForwarderEncapsulations()
@@ -194,10 +194,10 @@ class TestForwarderEncapsulation(unittest.TestCase):
         self.assertIsInstance(pkt2, MQTTSN2.ForwarderEncapsulations)
 
     def test_in_encapsulation_classes_dict(self):
-        self.assertIn(MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION,
+        self.assertIn(MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION,
                       MQTTSN2.encapsulation_classes)
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION],
             MQTTSN2.ForwarderEncapsulations)
 
     # --- inequality ---
@@ -320,12 +320,12 @@ class TestSessionEncapsulation(unittest.TestCase):
         recovered_inner = MQTTSN2.unpackPacket(pkt2.MQTTSNPacket)
         self.assertIsInstance(recovered_inner, MQTTSN2.Publishes)
 
-    # --- messageType and dispatch ---
+    # --- packetType and dispatch ---
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.SessionEncapsulations()
-        self.assertEqual(pkt.messageType,
-                         MQTTSN2.MessageTypes.SESSION_ENCAPSULATION)
+        self.assertEqual(pkt.packetType,
+                         MQTTSN2.PacketTypes.SESSION_ENCAPSULATION)
 
     def test_unpack_packet_dispatch(self):
         pkt  = MQTTSN2.SessionEncapsulations()
@@ -333,10 +333,10 @@ class TestSessionEncapsulation(unittest.TestCase):
         self.assertIsInstance(pkt2, MQTTSN2.SessionEncapsulations)
 
     def test_in_encapsulation_classes_dict(self):
-        self.assertIn(MQTTSN2.MessageTypes.SESSION_ENCAPSULATION,
+        self.assertIn(MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
                       MQTTSN2.encapsulation_classes)
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.SESSION_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.SESSION_ENCAPSULATION],
             MQTTSN2.SessionEncapsulations)
 
     # --- inequality ---
@@ -776,12 +776,12 @@ class TestProtectionEncapsulation(unittest.TestCase):
         buf = pkt.pack()
         self.assertEqual(len(buf), 44)
 
-    # --- messageType and dispatch ---
+    # --- packetType and dispatch ---
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.ProtectionEncapsulations()
-        self.assertEqual(pkt.messageType,
-                         MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION)
+        self.assertEqual(pkt.packetType,
+                         MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION)
 
     def test_unpack_packet_dispatch(self):
         pkt  = self._make_minimal()
@@ -789,10 +789,10 @@ class TestProtectionEncapsulation(unittest.TestCase):
         self.assertIsInstance(pkt2, MQTTSN2.ProtectionEncapsulations)
 
     def test_in_encapsulation_classes_dict(self):
-        self.assertIn(MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION,
+        self.assertIn(MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION,
                       MQTTSN2.encapsulation_classes)
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION],
             MQTTSN2.ProtectionEncapsulations)
 
     # --- inequality ---
@@ -840,31 +840,31 @@ class TestProtectionEncapsulation(unittest.TestCase):
 class TestEncapsulationClassesDict(unittest.TestCase):
 
     def test_all_three_types_present(self):
-        for type_code in (MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION,
-                          MQTTSN2.MessageTypes.SESSION_ENCAPSULATION,
-                          MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION):
+        for type_code in (MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION):
             self.assertIn(type_code, MQTTSN2.encapsulation_classes)
 
     def test_forwarder_maps_to_correct_class(self):
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION],
             MQTTSN2.ForwarderEncapsulations)
 
     def test_session_maps_to_correct_class(self):
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.SESSION_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.SESSION_ENCAPSULATION],
             MQTTSN2.SessionEncapsulations)
 
     def test_protection_maps_to_correct_class(self):
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION],
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION],
             MQTTSN2.ProtectionEncapsulations)
 
     def test_encapsulation_types_not_in_classes_list(self):
         """The sparse type codes must not appear in the dense classes[] list."""
-        for type_code in (MQTTSN2.MessageTypes.FOWARDER_ENCAPSULATION,
-                          MQTTSN2.MessageTypes.SESSION_ENCAPSULATION,
-                          MQTTSN2.MessageTypes.PROTECTION_ENCAPSULATION):
+        for type_code in (MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION):
             self.assertGreater(type_code, len(MQTTSN2.classes) - 1)
 
 

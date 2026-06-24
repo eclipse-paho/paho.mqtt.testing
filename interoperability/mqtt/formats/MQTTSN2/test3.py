@@ -146,11 +146,11 @@ class TestPubwos(unittest.TestCase):
 
         self.assertEqual(pkt2.Data, bytes(range(128)))
 
-    # --- messageType ---
+    # --- packetType ---
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Pubwoses()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.PUBWOS)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.PUBWOS)
 
     # --- unpackPacket dispatch ---
 
@@ -240,9 +240,9 @@ class TestSleepreq(unittest.TestCase):
         self.assertEqual(pkt2.PacketId,      0xFFFF)
         self.assertEqual(pkt2.SleepDuration, 0xFFFFFFFF)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Sleepreqs()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.SLEEPREQ)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.SLEEPREQ)
 
     def test_unpack_packet_dispatch(self):
         pkt  = MQTTSN2.Sleepreqs()
@@ -342,9 +342,9 @@ class TestSleepresp(unittest.TestCase):
 
         self.assertTrue(pkt2.SleeprespFlags.SleepDur)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Sleepresps()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.SLEEPRESP)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.SLEEPRESP)
 
     def test_unpack_packet_dispatch(self):
         buf  = MQTTSN2.Sleepresps().pack()
@@ -390,11 +390,11 @@ class TestWakeup(unittest.TestCase):
     def test_wire_type_byte(self):
         buf = MQTTSN2.Wakeups().pack()
         # Second byte is the packet type
-        self.assertEqual(buf[1], MQTTSN2.MessageTypes.WAKEUP)
+        self.assertEqual(buf[1], MQTTSN2.PacketTypes.WAKEUP)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Wakeups()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.WAKEUP)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.WAKEUP)
 
     def test_any_two_wakeups_equal(self):
         self.assertEqual(MQTTSN2.Wakeups(), MQTTSN2.Wakeups())
@@ -447,9 +447,9 @@ class TestAdvertise(unittest.TestCase):
         buf = MQTTSN2.Advertises().pack()
         self.assertEqual(len(buf), 5)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Advertises()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.ADVERTISE)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.ADVERTISE)
 
     def test_unpack_packet_dispatch(self):
         pkt  = MQTTSN2.Advertises()
@@ -516,9 +516,9 @@ class TestSearchgw(unittest.TestCase):
         buf = pkt.pack()
         self.assertEqual(len(buf), 3)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Searchgws()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.SEARCHGW)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.SEARCHGW)
 
     def test_unpack_packet_dispatch(self):
         buf  = MQTTSN2.Searchgws().pack()
@@ -597,9 +597,9 @@ class TestGwinfo(unittest.TestCase):
         buf = pkt.pack()
         self.assertEqual(len(buf), 7)
 
-    def test_message_type(self):
+    def test_packet_type(self):
         pkt = MQTTSN2.Gwinfos()
-        self.assertEqual(pkt.messageType, MQTTSN2.MessageTypes.GWINFO)
+        self.assertEqual(pkt.packetType, MQTTSN2.PacketTypes.GWINFO)
 
     def test_unpack_packet_dispatch(self):
         pkt  = MQTTSN2.Gwinfos()
@@ -631,25 +631,25 @@ class TestClassesIndex(unittest.TestCase):
                          f"{cls.__name__} at index {idx}, expected {expected_type}")
 
     def test_pubwos_index(self):
-        self._check(MQTTSN2.Pubwoses,   MQTTSN2.MessageTypes.PUBWOS)
+        self._check(MQTTSN2.Pubwoses,   MQTTSN2.PacketTypes.PUBWOS)
 
     def test_sleepreq_index(self):
-        self._check(MQTTSN2.Sleepreqs,  MQTTSN2.MessageTypes.SLEEPREQ)
+        self._check(MQTTSN2.Sleepreqs,  MQTTSN2.PacketTypes.SLEEPREQ)
 
     def test_sleepresp_index(self):
-        self._check(MQTTSN2.Sleepresps, MQTTSN2.MessageTypes.SLEEPRESP)
+        self._check(MQTTSN2.Sleepresps, MQTTSN2.PacketTypes.SLEEPRESP)
 
     def test_wakeup_index(self):
-        self._check(MQTTSN2.Wakeups,    MQTTSN2.MessageTypes.WAKEUP)
+        self._check(MQTTSN2.Wakeups,    MQTTSN2.PacketTypes.WAKEUP)
 
     def test_advertise_index(self):
-        self._check(MQTTSN2.Advertises, MQTTSN2.MessageTypes.ADVERTISE)
+        self._check(MQTTSN2.Advertises, MQTTSN2.PacketTypes.ADVERTISE)
 
     def test_searchgw_index(self):
-        self._check(MQTTSN2.Searchgws,  MQTTSN2.MessageTypes.SEARCHGW)
+        self._check(MQTTSN2.Searchgws,  MQTTSN2.PacketTypes.SEARCHGW)
 
     def test_gwinfo_index(self):
-        self._check(MQTTSN2.Gwinfos,    MQTTSN2.MessageTypes.GWINFO)
+        self._check(MQTTSN2.Gwinfos,    MQTTSN2.PacketTypes.GWINFO)
 
 
 if __name__ == "__main__":
