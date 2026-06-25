@@ -32,7 +32,7 @@ from . import Topics
 from .SubscriptionEngines import SubscriptionEngines
 import mqtt.formats.MQTTSN2 as MQTTSN
 
-logger = logging.getLogger('MQTT-SN broker')
+logger = logging.getLogger('MQTT broker')
 
 
 class Brokers:

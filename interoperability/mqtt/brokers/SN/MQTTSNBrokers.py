@@ -22,7 +22,7 @@ from mqtt.formats import MQTTSN2 as MQTTSN
 
 from .Brokers import Brokers
 
-logger = logging.getLogger('MQTT-SN broker')
+logger = logging.getLogger('MQTT broker')
 
 def respond(callback, packet=None):
   logger.debug("out: "+str(packet))

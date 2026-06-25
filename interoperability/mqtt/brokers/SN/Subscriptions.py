@@ -18,7 +18,7 @@
 
 import time, logging
 
-logger = logging.getLogger('MQTT-SN broker')
+logger = logging.getLogger('MQTT broker')
 
 class Subscriptions:
 

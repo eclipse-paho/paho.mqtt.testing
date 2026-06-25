@@ -27,7 +27,7 @@ import mqtt.formats.MQTTSN2 as MQTTSN
 
 from .Subscriptions import *
 
-logger = logging.getLogger('MQTT-SN broker')
+logger = logging.getLogger('MQTT broker')
 
 def isDollarTopic(name):
   return name[0] == '$' # and not name.startswith('$share/')

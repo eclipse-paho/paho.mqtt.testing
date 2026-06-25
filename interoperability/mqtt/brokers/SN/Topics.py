@@ -20,7 +20,7 @@
 import re, logging
 from mqtt.formats import MQTTSN2 as MQTTSN
 
-logger = logging.getLogger('MQTT-SN broker')
+logger = logging.getLogger('MQTT broker')
 
  
 def isValidTopicName(aName):
