@@ -171,9 +171,11 @@ class Brokers:
 
       if self.overlapping_single:
         options = self.se.optionsOf(subscriber, topic)
-        if options is not None:
+        if type(options) == type(3): # MQTT 3.1.1
+          out_qos = min(options, qos)
+        else:
           out_qos = min(options.QoS, qos)
-          client.publishArrived(topic, message, out_qos)
+        client.publishArrived(topic, message, out_qos)
       else:
         for subscription in subs_for_client:
           out_qos = min(subscription.getQoS(), qos)
