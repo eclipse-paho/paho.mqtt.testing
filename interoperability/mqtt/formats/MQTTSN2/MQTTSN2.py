@@ -889,12 +889,12 @@ class Publishes(Packets):
 
   def pack(self):
     body = bytes([self.packetType]) + self.Flags.pack()
+    if self.Flags.QoS != 0:
+      body += writeInt16(self.PacketId)
     if self.Flags.TopicType == self.Flags.TOPIC_TYPE_NAME:
       body += writeLenData(self.TopicName)
     else:
       body += writeInt16(self.TopicAlias)
-    if self.Flags.QoS != 0:
-      body += writeInt16(self.PacketId)
     body += writeData(self.Data)
     msglen = 1 + len(body)  # length field(1) + body
     return bytes([msglen]) + body
@@ -907,6 +907,9 @@ class Publishes(Packets):
       curlen = lenlen + 1 # add byte for packet type
       self.Flags.unpack(buffer[curlen])
       curlen += 1
+      if self.Flags.QoS != 0:
+        self.PacketId = readInt16(buffer[curlen:])
+        curlen += 2
       if self.Flags.TopicType == self.Flags.TOPIC_TYPE_NAME:
         namelen = readInt16(buffer[curlen:])
         curlen += 2
@@ -914,9 +917,6 @@ class Publishes(Packets):
         curlen += namelen 
       else:
         self.TopicAlias = readInt16(buffer[curlen:])
-        curlen += 2
-      if self.Flags.QoS != 0:
-        self.PacketId = readInt16(buffer[curlen:])
         curlen += 2
       self.Data = buffer[curlen:]
     except:
