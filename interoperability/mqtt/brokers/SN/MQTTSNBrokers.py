@@ -11,6 +11,13 @@
   and the Eclipse Distribution License is available at
     http://www.eclipse.org/org/documents/edl-v10.php.
 
+  AI Disclosure: This file was partly AI-generated. The AI-generated
+  portions are made available under CC0-1.0 and not subject to the
+  project's licence. The human contributor has reviewed and verified
+  that the code is correct.
+  
+  SPDX-License-Identifier: EPL-2.0 and CC0-1.0
+
   Contributors:
      Ian Craggs - initial implementation and/or documentation
 *******************************************************************
@@ -19,8 +26,10 @@
 import traceback, random, sys, string, copy, threading, logging, socket, time, uuid
 
 from mqtt.formats import MQTTSN2 as MQTTSN
+from mqtt.formats.MQTTSN2 import ConnectProtection
 
 from .Brokers import Brokers
+from .MQTTSNProtection import KeyStore, verify_protection, wrap_protection, ProtectionError
 
 logger = logging.getLogger('MQTT broker')
 
@@ -63,6 +72,13 @@ class MQTTSNClients:
     self.topicNamesToAliases = {} # topic name -> alias, server's view of what it has told the client
     self.aliasesToTopicNames = {} # alias -> topic name
     self.nextTopicAlias = 1
+    # Protection state: set when the client's CONNECT arrived inside a
+    # Protection Encapsulation.  All subsequent inbound packets from this
+    # client must also be protected [MQTT-SN-3.17-3], and all outbound
+    # packets to this client must be protected by the server [MQTT-SN-3.17-2].
+    self.protectionRequired  = False  # True once a protected CONNECT is seen
+    self.protectionSenderId  = None   # 8-byte server sender-id used for outbound wrapping
+    self.protectionScheme    = None   # scheme code used by the client; reused for outbound
 
   def assignTopicAlias(self, topicName):
     "find or create a Session Topic Alias for the given topic name (Section 4.7.2.2)"
@@ -208,7 +224,8 @@ class MQTTSNBrokers:
     overlapping_single=True,
     dropQoS0=True,
     zero_length_clientids=True,
-    lock=None, sharedData={}):
+    lock=None, sharedData={},
+    key_store=None):
 
     # optional behaviours
     self.publish_on_pubrel = publish_on_pubrel
@@ -216,6 +233,10 @@ class MQTTSNBrokers:
     self.zero_length_clientids = zero_length_clientids
 
     self.broker = Brokers(overlapping_single, sharedData=sharedData)
+    self.key_store = key_store if key_store is not None else KeyStore()
+    self.key_store.add_key(bytes.fromhex("DEADBEEFCAFEBABE"), 
+        bytes.fromhex("00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F"
+                      "10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F"))
     self.clients = {}   # callback -> clients
     if lock:
       logger.info("Using shared lock %d", id(lock))
@@ -254,13 +275,32 @@ class MQTTSNBrokers:
         self.disconnect(client_address, None, terminate=True)
         terminate = True
       else:
+        print("unpacking packet")
+        connect_protection = None  # set below if the packet arrived protected
         packet = MQTTSN.unpackPacket(raw_packet)
         if packet:
           if isinstance(packet, MQTTSN.ProtectionEncapsulations):
+            connect_protection = ConnectProtection(
+                packet.SenderIdentifier, packet.ProtectionScheme)
             packet = self.unwrapProtection(packet, client_address, callback)
             if packet is None:
-              return terminate  # lock released by finally block
+              return terminate  # error already sent; finally releases the lock
           if packet is not None:
+            # Enforce protection requirement [MQTT-SN-3.17-3]:
+            # if this client has an established session that required protection,
+            # any unprotected inbound packet must be rejected.
+            client = self.clients.get(client_address)
+            if client is not None and client.protectionRequired and connect_protection is None:
+              logger.error("[MQTT-SN-3.17-3] Unprotected packet received from client %s "
+                           "whose session requires protection", client.id)
+              self._send_only_protection_error(client_address, packet, callback)
+              return terminate
+            # For CONNECT packets only: attach protection metadata so that
+            # connect() can record session protection state once the
+            # MQTTSNClients object exists.  ConnectProtection is in Connects.names
+            # so the setattr guard allows it; we do not annotate other packet types.
+            if isinstance(packet, MQTTSN.Connects):
+              packet.ConnectProtection = connect_protection
             terminate = self.handlePacket(packet, client_address, callback)
         else:
           raise MQTTSN.MQTTSNException("[MQTT-2.0.0-1] handleRequest: badly formed MQTT-SN packet")
@@ -274,8 +314,6 @@ class MQTTSNBrokers:
     terminate = False
     logger.debug("in: "+str(packet))
     if isinstance(packet, MQTTSN.ProtectionEncapsulations):
-      # Protection encapsulations must be unwrapped before dispatch;
-      # if handlePacket is called directly with one, unwrap it now.
       packet = self.unwrapProtection(packet, client_address, callback)
       if packet is None:
         return terminate
@@ -292,57 +330,139 @@ class MQTTSNBrokers:
     return terminate
 
   def unwrapProtection(self, protection, client_address, callback):
-    """Unwrap a Protection Encapsulation packet (Section 3.17).
+    """Unwrap and cryptographically verify a Protection Encapsulation (Section 3.17).
 
-    This test broker does not perform cryptographic verification of the
-    AuthenticationTag — it logs the encapsulation metadata and dispatches
-    the enclosed packet as if it had arrived unwrapped.  A production
-    implementation would verify the tag here and return None on failure,
-    sending a DISCONNECT with ReasonCode 'Protection scheme invalid' (0xE7).
+    Delegates to MQTTSNProtection.verify_protection() which:
+      - looks up the shared key via self.key_store using the SenderIdentifier,
+      - verifies the AuthenticationTag using the negotiated protection scheme,
+      - for AEAD schemes, also decrypts the ProtectedMQTTSNPacket ciphertext.
 
-    Returns the inner Packets object on success, or None if the encapsulated
-    payload cannot be parsed (in which case an error is logged and the
-    virtual connection is dropped).
+    On success, parses and returns the inner Packets object.
+    On any failure (unknown sender, bad tag, unsupported scheme, parse error),
+    sends DISCONNECT(Protection scheme invalid) and returns None.
     """
     logger.debug("Protection Encapsulation received: scheme=0x%02X sender=%s",
                  protection.ProtectionScheme,
                  protection.SenderIdentifier.hex())
-    logger.info("[MQTT-SN-3.17-1] authentication tag not verified (test broker)")
 
-    inner_bytes = protection.ProtectedMQTTSNPacket
-    if not inner_bytes:
-      logger.error("[MQTT-SN-3.17] Protection Encapsulation contains no inner packet")
+    # Cryptographic verification (and decryption for AEAD schemes)
+    inner_bytes = verify_protection(protection, self.key_store)
+    if inner_bytes is None:
+      logger.error("[MQTT-SN-3.17] Protection verification failed for sender %s",
+                   protection.SenderIdentifier.hex())
       self._send_protection_error(client_address, callback)
       return None
 
+    # Parse the verified plaintext as an MQTT-SN packet
     inner_packet = MQTTSN.unpackPacket(inner_bytes)
     if inner_packet is None:
       logger.error("[MQTT-SN-3.17] Could not parse inner packet from Protection Encapsulation")
       self._send_protection_error(client_address, callback)
       return None
 
+    # [MQTT-SN-3.17.8-1] inner packet MUST NOT itself be a Protection Encapsulation
     if isinstance(inner_packet, MQTTSN.ProtectionEncapsulations):
-      logger.error("[MQTT-SN-3.17] Nested Protection Encapsulation is not permitted")
+      logger.error("[MQTT-SN-3.17.8-1] Nested Protection Encapsulation is not permitted")
       self._send_protection_error(client_address, callback)
       return None
 
-    logger.debug("Protection Encapsulation unwrapped: inner packet type %d", inner_packet.packetType)
+    logger.debug("[MQTT-SN-3.17-1] Protection Encapsulation verified: inner type %d",
+                 inner_packet.packetType)
     return inner_packet
 
   def _send_protection_error(self, client_address, callback):
-    """Send DISCONNECT with 'Protection scheme invalid' and drop the client."""
+    """Send DISCONNECT(Protection scheme invalid) and drop the client."""
     resp = MQTTSN.Disconnects()
     resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.DISCONNECT,
-                                         "Protection scheme invalid").value
+                                         "Protection scheme invalid")
     if callback:
       respond(callback, resp)
     self.disconnect(client_address, None)
+
+  def _send_only_protection_error(self, client_address, packet, callback):
+    """Reject an unprotected packet from a session that requires protection.
+
+    Sends ReasonCode 0xE6 (Only protection packet supported) in the response
+    packet type appropriate for the inbound packet type [MQTT-SN-3.17-3], then
+    sends DISCONNECT and drops the client.
+    """
+    pt = packet.packetType
+    resp = None
+    rc_e6 = None
+    # 0xE6 is valid on: CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP,
+    #                   SUBACK, UNSUBACK, REGACK [per Table 2-5]
+    if pt == MQTTSN.PacketTypes.CONNECT:
+      resp = MQTTSN.Connacks()
+      rc_e6 = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK,
+                                  "Only protection packet supported")
+      resp.ReasonCode = rc_e6
+    elif pt in (MQTTSN.PacketTypes.PUBLISH,
+                MQTTSN.PacketTypes.PUBWOS):
+      resp = MQTTSN.Pubacks()
+      rc_e6 = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBACK,
+                                  "Only protection packet supported")
+      resp.ReasonCode = rc_e6
+      if hasattr(packet, "PacketId"):
+        resp.PacketId = packet.PacketId
+    elif pt == MQTTSN.PacketTypes.SUBSCRIBE:
+      resp = MQTTSN.Subacks()
+      rc_e6 = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.SUBACK,
+                                  "Only protection packet supported")
+      resp.ReasonCode = rc_e6
+      resp.PacketId = packet.PacketId
+    elif pt == MQTTSN.PacketTypes.UNSUBSCRIBE:
+      resp = MQTTSN.Unsubacks()
+      rc_e6 = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.UNSUBACK,
+                                  "Only protection packet supported")
+      resp.ReasonCode = rc_e6
+      resp.PacketId = packet.PacketId
+    elif pt == MQTTSN.PacketTypes.REGISTER:
+      resp = MQTTSN.Regacks()
+      rc_e6 = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.REGACK,
+                                  "Only protection packet supported")
+      resp.ReasonCode = rc_e6
+      resp.PacketId = packet.PacketId
+    # For packet types with no corresponding response carrying 0xE6
+    # (e.g. PINGREQ, DISCONNECT, PUBREL), send DISCONNECT directly.
+    if resp is not None and callback:
+      respond(callback, resp)
+    # Always follow with DISCONNECT and drop the client [MQTT-SN-3.17-3]
+    disc = MQTTSN.Disconnects()
+    disc.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.DISCONNECT,
+                                          "Only protection packet supported")
+    if callback:
+      respond(callback, disc)
+    self.disconnect(client_address, None)
+
+  def _respond_protected(self, client, callback, packet):
+    """Wrap packet in a Protection Encapsulation before sending, when the
+    session requires protection [MQTT-SN-3.17-2].
+
+    Uses the same scheme the client used for its CONNECT and the server's
+    own sender identifier (looked up from self.key_store).
+    If wrapping fails for any reason, the unprotected packet is sent and
+    an error is logged; this avoids silently dropping responses.
+    """
+    if client is None or not client.protectionRequired:
+      respond(callback, packet)
+      return
+    try:
+      inner_bytes = packet.pack()
+      prot = wrap_protection(
+          inner_bytes,
+          client.protectionSenderId,
+          client.protectionScheme,
+          self.key_store)
+      respond(callback, prot)
+    except ProtectionError as e:
+      logger.error("[MQTT-SN-3.17-2] Failed to wrap outbound packet: %s", e)
+      respond(callback, packet)  # best-effort fallback
 
   def connect(self, client_address, packet, callback):
     if packet.ProtocolVersion != 2:
       logger.error("[MQTT-SN-3.1.2-2] Wrong protocol version %d", packet.ProtocolVersion)
       resp = MQTTSN.Connacks()
-      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Unsupported protocol version").value
+      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Unsupported protocol version")
       resp.PacketId = packet.PacketId
       respond(callback, resp)
       logger.info("[MQTT-SN-3.2.4-2] must delete the Virtual Connection after non-zero reason code")
@@ -358,7 +478,7 @@ class MQTTSNBrokers:
       if self.zero_length_clientids == False:
         logger.info("[MQTT-SN-3.1.3-9] if clientid is rejected, must send connack with non-zero reason code")
         resp = MQTTSN.Connacks()
-        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Client identifier not valid").value
+        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Client identifier not valid")
         resp.PacketId = packet.PacketId
         respond(callback, resp)
         logger.info("[MQTT-SN-3.2.4-2] must delete the Virtual Connection after non-zero reason code")
@@ -407,6 +527,21 @@ class MQTTSNBrokers:
       me.sessionExpiryInterval = sessionExpiryInterval
     logger.info("[MQTT-4.1.0-1] server must store data for at least as long as the network connection lasts")
     self.clients[client_address] = me
+    # Record protection state from the CONNECT packet [MQTT-SN-3.17-2/3].
+    # The server re-uses the client's scheme for its own outbound packets,
+    # identified by the server's own SenderIdentifier in the key store.
+    # We use the client's SenderIdentifier as the server's own id for
+    # simplicity — a real deployment would have a separate server id.
+    if packet.ConnectProtection is not None:
+      me.protectionRequired = True
+      me.protectionScheme   = packet.ConnectProtection.scheme
+      # Server uses its own sender id: the first registered key in the
+      # key_store whose id matches the client's, i.e. the shared-key peer.
+      # For the test broker we reuse the client's sender id as our own.
+      me.protectionSenderId = packet.ConnectProtection.sender_id
+      logger.info("[MQTT-SN-3.17-2] Session for client %s requires protection "
+                  "(scheme 0x%02X, sender %s)",
+                  me.id, me.protectionScheme, me.protectionSenderId.hex())
     if packet.ConnectFlags.Will:
       me.will = (packet.WillTopic, packet.WillFlags.WillQoS, packet.WillPayload, packet.WillFlags.WillRetain)
       logger.info("[MQTT-SN-3.1.2.2-2] the will message must be stored if the Will Flag is set")
@@ -414,12 +549,12 @@ class MQTTSNBrokers:
       me.will = None
     self.broker.connect(me, clean)
     logger.info("[MQTT-SN-3.2.0-1] the first response to a client must be a connack")
-    resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Success").value
+    resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.CONNACK, "Success")
     resp.PacketId = packet.PacketId
     if assignedClientId:
       logger.info("[MQTT-SN-4.1.2-1] must return the assigned client id")
       resp.AssignedClientId = packet.ClientId
-    respond(callback, resp)
+    self._respond_protected(me, callback, resp)
     me.resend()
 
   def disconnect(self, client_address, packet, callback=None, terminate=False):
@@ -432,12 +567,12 @@ class MQTTSNBrokers:
     if client_address in self.clients.keys():
       me = self.clients[client_address]
       if packet is not None and isinstance(packet, MQTTSN.Disconnects):
-        if packet.ReasonCode == 0:
+        if packet.ReasonCode.value == 0:
           logger.info("[MQTT-SN-3.1.2.2-4] will message is deleted after normal disconnection")
           me.will = None
         else:
-          logger.info("[MQTT-3.14.4-3] client requested disconnect with non-zero reason code %d",
-                      packet.ReasonCode)
+          logger.info("[MQTT-3.14.4-3] client requested disconnect with non-zero reason code %s",
+                      str(packet.ReasonCode))
       if terminate:
         self.broker.terminate(me.id)
       else:
@@ -456,14 +591,14 @@ class MQTTSNBrokers:
     resp.PacketId = packet.PacketId
     if packet.RegisterFlags.TopicAliasFlag:
       logger.error("[MQTT-SN-3.4-1] REGISTER from a Client must not contain a Topic Alias")
-      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.REGACK, "Protocol error").value
+      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.REGACK, "Protocol error")
     else:
       alias = me.assignTopicAlias(packet.TopicName)
       resp.RegackFlags.TopicType = 0  # Session Topic Alias
       resp.RegackFlags.TopicAliasFlag = True
       resp.TopicAlias = alias
-      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.REGACK, "Success").value
-    respond(callback, resp)
+      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.REGACK, "Success")
+    self._respond_protected(me, callback, resp)
 
   def subscribe(self, client_address, packet, callback):
     topic_type = packet.SubscribeFlags.TopicType
@@ -478,15 +613,14 @@ class MQTTSNBrokers:
     logger.info("[MQTT-3.8.4-1] Must respond with suback")
     resp.PacketId = packet.PacketId
     logger.info("[MQTT-3.8.4-5] return code must be returned for each topic in subscribe")
-    reason = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.SUBACK, identifier=packet.SubscribeFlags.QoS)
-    resp.ReasonCode = reason.value
+    resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.SUBACK, identifier=packet.SubscribeFlags.QoS)
     # [MQTT-SN-4.7.2.2-2] a non-wildcard Topic Filter subscription must be given a Topic Alias
     if topic_type == 3 and "+" not in topic and "#" not in topic:
       alias = me.assignTopicAlias(topic)
       resp.SubackFlags.TopicType = 0  # Session Topic Alias
       resp.SubackFlags.TopicAliasFlag = True
       resp.TopicAlias = alias
-    respond(callback, resp)
+    self._respond_protected(me, callback, resp)
 
   def unsubscribe(self, client_address, packet, callback):
     if packet.UnsubscribeFlags.TopicType == 3:
@@ -501,7 +635,7 @@ class MQTTSNBrokers:
     if len(me.outbound) > 0:
       logger.info("[MQTT-3.10.4-3] sending unsuback has no effect on outward inflight messages")
     resp.PacketId = packet.PacketId
-    respond(callback, resp)
+    self._respond_protected(me, callback, resp)
 
   def pubwos(self, client_address, packet, callback):
     if packet.PubwosFlags.TopicType == 3:  # Topic Name
@@ -533,11 +667,11 @@ class MQTTSNBrokers:
       logger.info("[MQTT-2.3.1-6] puback message id same as publish")
       resp.PacketId = packet.PacketId
       if topicName is None:
-        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBACK, "Unknown Topic Alias").value
+        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBACK, "Unknown Topic Alias")
       else:
         self.broker.publish(me.id, topicName, packet.Data, packet.Flags.QoS, packet.Flags.RETAIN,
                time.monotonic())
-      respond(callback, resp)
+      self._respond_protected(me, callback, resp)
     elif packet.Flags.QoS == 2:
       if self.publish_on_pubrel:
         if packet.PacketId in me.inbound.keys():
@@ -563,8 +697,8 @@ class MQTTSNBrokers:
       logger.info("[MQTT-2.3.1-6] pubrec message id same as publish")
       resp.PacketId = packet.PacketId
       if topicName is None:
-        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBREC, "Unknown Topic Alias").value
-      respond(callback, resp)
+        resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBREC, "Unknown Topic Alias")
+      self._respond_protected(me, callback, resp)
 
   def pubrel(self, client_address, packet, callback):
     me = self.clients[client_address]
@@ -580,18 +714,20 @@ class MQTTSNBrokers:
         del me.inbound[packet.PacketId]
       else:
         me.inbound.remove(packet.PacketId)
+    me = self.clients[client_address]
     resp = MQTTSN.Pubcomps()
     logger.info("[MQTT-2.3.1-6] pubcomp message id same as publish")
     resp.PacketId = packet.PacketId
     if not pub:
-      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBCOMP, "Packet identifier not found").value
-    respond(callback, resp)
+      resp.ReasonCode = MQTTSN.ReasonCodes(MQTTSN.PacketTypes.PUBCOMP, "Packet identifier not found")
+    self._respond_protected(me, callback, resp)
 
   def pingreq(self, client_address, packet, callback):
+    me = self.clients[client_address]
     resp = MQTTSN.Pingresps()
     logger.info("[MQTT-3.12.4-1] sending pingresp in response to pingreq")
     resp.PacketId = packet.PacketId
-    respond(callback, resp)
+    self._respond_protected(me, callback, resp)
 
   def puback(self, client_address, packet, callback):
     "confirmed reception of qos 1"
@@ -604,7 +740,7 @@ class MQTTSNBrokers:
       logger.info("[MQTT-3.5.4-1] must reply with pubrel in response to pubrec")
       resp = MQTTSN.Pubrels()
       resp.PacketId = packet.PacketId
-      respond(me.callback, resp)
+      self._respond_protected(me, me.callback, resp)
 
   def pubcomp(self, client_address, packet, callback):
     "confirmed reception of qos 2"

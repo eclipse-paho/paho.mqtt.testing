@@ -477,6 +477,30 @@ class WillFlags:
     return 1  # length of flags
 
 
+class ConnectProtection:
+  """Carries the protection metadata from a protected CONNECT packet.
+
+  Set on a Connects object by the broker's handleRequest() when the CONNECT
+  arrived inside a Protection Encapsulation, so that connect() can record the
+  session's protection requirements without needing extra ad-hoc attributes.
+
+  Attributes
+  ----------
+  sender_id : bytes
+      The 8-byte SenderIdentifier from the Protection Encapsulation header.
+  scheme : int
+      The ProtectionScheme byte (e.g. 0x00 for HMAC-SHA256).
+  """
+
+  def __init__(self, sender_id: bytes, scheme: int):
+    self.sender_id = sender_id
+    self.scheme    = scheme
+
+  def __repr__(self):
+    return (f"ConnectProtection(sender_id={self.sender_id.hex()!r}, "
+            f"scheme=0x{self.scheme:02X})")
+
+
 class Connects(Packets):
   """
   CONNECT packet (Section 3.1).
@@ -504,7 +528,8 @@ class Connects(Packets):
           "PacketId", "ProtocolVersion", "KeepAlive", "MaxPacketSize",
           "DefaultAwakeMessages", "SessionExpiryInterval",
           "WillTopic", "WillPayload",
-          "AuthMethod", "AuthData", "ClientId"])
+          "AuthMethod", "AuthData", "ClientId",
+          "ConnectProtection"])
     self.packetType = PacketTypes.CONNECT
 
     self.ConnectFlags = ConnectFlags()
@@ -521,6 +546,7 @@ class Connects(Packets):
     self.AuthMethod            = None  # None = absent (Auth flag clear)
     self.AuthData              = None  # None = absent (Auth flag clear)
     self.ClientId              = ""
+    self.ConnectProtection     = None  # set by broker when CONNECT arrived protected
     if buffer != None:
       self.unpack(buffer)
 
@@ -678,7 +704,7 @@ class Connacks(Packets):
     self.packetType = PacketTypes.CONNACK
     self.Flags = 0
     self.PacketId = 0
-    self.ReasonCode = 0
+    self.ReasonCode = ReasonCodes(PacketTypes.CONNACK)
     self.AssignedClientId = ""
     if buffer != None:
       self.unpack(buffer)
@@ -686,7 +712,7 @@ class Connacks(Packets):
   def pack(self):
     msglen = 6 + len(self.AssignedClientId)
     buffer = bytes([msglen, PacketTypes.CONNACK]) + bytes([self.Flags]) +\
-      writeInt16(self.PacketId) + bytes([self.ReasonCode]) + writeData(self.AssignedClientId)
+      writeInt16(self.PacketId) + self.ReasonCode.pack() + writeData(self.AssignedClientId)
     return buffer
 
   def unpack(self, buffer):
@@ -696,7 +722,8 @@ class Connacks(Packets):
       packetlen, lenlen = PacketLens.decode(buffer)
       # self.ConnectFlags.unpack(buffer[lenlen + 1])
       self.PacketId = readInt16(buffer[lenlen + 2:])
-      self.ReasonCode = buffer[lenlen + 4]
+      self.ReasonCode = ReasonCodes(PacketTypes.CONNACK)
+      self.ReasonCode.unpack(buffer[lenlen + 4:])
     except:
       logger.exception("Validating connack packet")
       raise
@@ -707,7 +734,7 @@ class Connacks(Packets):
         ", ReasonCode="+str(self.ReasonCode) + ")"
 
   def __eq__(self, packet):
-    rc = self.ReasonCode == packet.ReasonCode
+    rc = self.ReasonCode.value == packet.ReasonCode.value
     return rc
   
   """
@@ -960,15 +987,15 @@ class Acks(Packets):
     object.__setattr__(self, "names", ["PacketId", "ReasonCode"])
     object.__setattr__(self, "packetType", packetType)
     self.PacketId = 0
-    self.ReasonCode = 0  # 0x00 = success; omitted from wire when success
+    self.ReasonCode = ReasonCodes(packetType)
     if buffer != None:
       self.unpack(buffer)
  
   def pack(self):
     # body: type(1) + packetid(2) + [reasoncode(1, if not success)]
     body = bytes([self.packetType]) + writeInt16(self.PacketId)
-    if self.ReasonCode != 0:
-      body += bytes([self.ReasonCode])
+    if self.ReasonCode.value != 0:
+      body += self.ReasonCode.pack()
     msglen = 1 + len(body)  # length field(1) + body
     return bytes([msglen]) + body
  
@@ -980,9 +1007,10 @@ class Acks(Packets):
       self.PacketId = readInt16(buffer[lenlen + 1:])
       # ReasonCode is optional: present when packet length allows (Section 3.6.4-7)
       if packetlen > lenlen + 3:
-        self.ReasonCode = buffer[lenlen + 3]
+        self.ReasonCode = ReasonCodes(self.packetType)
+        self.ReasonCode.unpack(buffer[lenlen + 3:])
       else:
-        self.ReasonCode = 0  # absent means success
+        self.ReasonCode = ReasonCodes(self.packetType)  # absent means success (0x00)
     except:
       logger.exception("Validating %s packet" % self.__class__.__name__)
       raise
@@ -1188,7 +1216,7 @@ class Subacks(Packets):
     self.SubackFlags = SubackFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # present only when SubackFlags.TopicAliasFlag is True
-    self.ReasonCode = 0    # optional; 0x00=success/QoS0, 0x01=QoS1, 0x02=QoS2
+    self.ReasonCode = ReasonCodes(PacketTypes.SUBACK, "Granted QoS 0")
     if buffer != None:
       self.unpack(buffer)
  
@@ -1200,8 +1228,8 @@ class Subacks(Packets):
     if self.SubackFlags.TopicAliasFlag:
       body += writeInt16(self.TopicAlias)
     # Reason Code is optional: omit when success and no topic alias (Section 3.8.5)
-    if self.ReasonCode != 0 or self.SubackFlags.TopicAliasFlag:
-      body += bytes([self.ReasonCode])
+    if self.ReasonCode.value != 0 or self.SubackFlags.TopicAliasFlag:
+      body += self.ReasonCode.pack()
     msglen = 1 + len(body)  # length field(1) + body
     buffer = bytes([msglen]) + body
     return buffer
@@ -1221,9 +1249,10 @@ class Subacks(Packets):
         self.TopicAlias = 0
       # Reason Code: present when packet is long enough (Section 3.8.5)
       if pos < packetlen:
-        self.ReasonCode = buffer[pos]
+        self.ReasonCode = ReasonCodes(PacketTypes.SUBACK, "Granted QoS 0")
+        self.ReasonCode.unpack(buffer[pos:])
       else:
-        self.ReasonCode = 0  # absent means success
+        self.ReasonCode = ReasonCodes(PacketTypes.SUBACK, "Granted QoS 0")  # absent means QoS 0 / success
     except:
       logger.exception("Validating suback packet")
       raise
@@ -1238,7 +1267,7 @@ class Subacks(Packets):
     return self.SubackFlags == packet.SubackFlags and \
            self.PacketId == packet.PacketId and \
            self.TopicAlias == packet.TopicAlias and \
-           self.ReasonCode == packet.ReasonCode
+           self.ReasonCode.value == packet.ReasonCode.value
  
  
 class UnsubscribeFlags:
@@ -1357,15 +1386,15 @@ class Unsubacks(Packets):
     object.__setattr__(self, "names", ["packetType", "PacketId", "ReasonCode"])
     self.packetType = PacketTypes.UNSUBACK
     self.PacketId = 0
-    self.ReasonCode = 0  # 0x00 = success; omitted from wire when success
+    self.ReasonCode = ReasonCodes(PacketTypes.UNSUBACK)
     if buffer != None:
       self.unpack(buffer)
 
   def pack(self):
     # body: type(1) + packetid(2) + [reasoncode(1, if not success)]
     body = bytes([PacketTypes.UNSUBACK]) + writeInt16(self.PacketId)
-    if self.ReasonCode != 0:
-      body += bytes([self.ReasonCode])
+    if self.ReasonCode.value != 0:
+      body += self.ReasonCode.pack()
     msglen = 1 + len(body)  # length field(1) + body
     return bytes([msglen]) + body
 
@@ -1377,9 +1406,10 @@ class Unsubacks(Packets):
       self.PacketId = readInt16(buffer[lenlen + 1:])
       # ReasonCode is optional: present when packet length allows (Section 3.10.3)
       if packetlen > lenlen + 3:
-        self.ReasonCode = buffer[lenlen + 3]
+        self.ReasonCode = ReasonCodes(PacketTypes.UNSUBACK)
+        self.ReasonCode.unpack(buffer[lenlen + 3:])
       else:
-        self.ReasonCode = 0  # absent means success
+        self.ReasonCode = ReasonCodes(PacketTypes.UNSUBACK)  # absent means success (0x00)
     except:
       logger.exception("Validating unsuback packet")
       raise
@@ -1390,7 +1420,7 @@ class Unsubacks(Packets):
 
   def __eq__(self, packet):
     return self.PacketId == packet.PacketId and \
-           self.ReasonCode == packet.ReasonCode
+           self.ReasonCode.value == packet.ReasonCode.value
 
 
 class Pingreqs(Packets):
@@ -1550,7 +1580,7 @@ class Disconnects(Packets):
     self.packetType = PacketTypes.DISCONNECT
     self.DisconnectFlags = DisconnectFlags()
     self.PacketId = 0
-    self.ReasonCode = 0                 # 0x00 = Normal disconnection
+    self.ReasonCode = ReasonCodes(PacketTypes.DISCONNECT, "Normal disconnection")
     self.SessionExpiryInterval = None   # None means absent from wire
     self.ReasonString = None            # None means absent from wire
     if buffer != None:
@@ -1560,13 +1590,13 @@ class Disconnects(Packets):
     flags = self.DisconnectFlags
     # Derive flags from which fields are set
     flags.PacketIdFlag      = (self.PacketId != 0)
-    flags.ReasonCodeFlag    = (self.ReasonCode != 0)
+    flags.ReasonCodeFlag    = (self.ReasonCode.value != 0)
     flags.SessionExpiryFlag = (self.SessionExpiryInterval is not None)
     body = bytes([PacketTypes.DISCONNECT]) + flags.pack()
     if flags.PacketIdFlag:
       body += writeInt16(self.PacketId)
     if flags.ReasonCodeFlag:
-      body += bytes([self.ReasonCode])
+      body += self.ReasonCode.pack()
     if flags.SessionExpiryFlag:
       sei = self.SessionExpiryInterval
       body += bytes([(sei >> 24) & 0xFF, (sei >> 16) & 0xFF,
@@ -1590,10 +1620,11 @@ class Disconnects(Packets):
       else:
         self.PacketId = 0
       if flags.ReasonCodeFlag:
-        self.ReasonCode = buffer[pos]
+        self.ReasonCode = ReasonCodes(PacketTypes.DISCONNECT, "Normal disconnection")
+        self.ReasonCode.unpack(buffer[pos:])
         pos += 1
       else:
-        self.ReasonCode = 0
+        self.ReasonCode = ReasonCodes(PacketTypes.DISCONNECT, "Normal disconnection")
       if flags.SessionExpiryFlag:
         self.SessionExpiryInterval = (buffer[pos] << 24) | (buffer[pos+1] << 16) | \
                                      (buffer[pos+2] << 8) | buffer[pos+3]
@@ -1621,7 +1652,7 @@ class Disconnects(Packets):
 
   def __eq__(self, packet):
     return self.PacketId == packet.PacketId and \
-           self.ReasonCode == packet.ReasonCode and \
+           self.ReasonCode.value == packet.ReasonCode.value and \
            self.SessionExpiryInterval == packet.SessionExpiryInterval and \
            self.ReasonString == packet.ReasonString
 
@@ -1642,7 +1673,7 @@ class Auths(Packets):
          ["packetType", "PacketId", "ReasonCode", "AuthMethod", "AuthData"])
     self.packetType = PacketTypes.AUTH
     self.PacketId = 0
-    self.ReasonCode = 0     # 0x00 = Success
+    self.ReasonCode = ReasonCodes(PacketTypes.AUTH)
     self.AuthMethod = ""
     self.AuthData = b""
     if buffer != None:
@@ -1652,7 +1683,7 @@ class Auths(Packets):
     method_bytes = writeData(self.AuthMethod)
     body = bytes([PacketTypes.AUTH]) + \
            writeInt16(self.PacketId) + \
-           bytes([self.ReasonCode]) + \
+           self.ReasonCode.pack() + \
            writeInt16(len(method_bytes)) + \
            method_bytes + \
            writeData(self.AuthData)
@@ -1665,7 +1696,8 @@ class Auths(Packets):
     try:
       packetlen, lenlen = PacketLens.decode(buffer)
       self.PacketId = readInt16(buffer[lenlen + 1:])
-      self.ReasonCode = buffer[lenlen + 3]
+      self.ReasonCode = ReasonCodes(PacketTypes.AUTH)
+      self.ReasonCode.unpack(buffer[lenlen + 3:])
       method_len = readInt16(buffer[lenlen + 4:])
       pos = lenlen + 6
       self.AuthMethod = buffer[pos:pos + method_len].decode("utf-8")
@@ -1683,7 +1715,7 @@ class Auths(Packets):
 
   def __eq__(self, packet):
     return self.PacketId == packet.PacketId and \
-           self.ReasonCode == packet.ReasonCode and \
+           self.ReasonCode.value == packet.ReasonCode.value and \
            self.AuthMethod == packet.AuthMethod and \
            self.AuthData == packet.AuthData
 
@@ -1838,7 +1870,7 @@ class Regacks(Packets):
     self.RegackFlags = RegackFlags()
     self.PacketId = 0
     self.TopicAlias = 0    # present only when RegackFlags.TopicAliasFlag is True
-    self.ReasonCode = 0    # optional; 0x00=success; inferred from length
+    self.ReasonCode = ReasonCodes(PacketTypes.REGACK)
     if buffer != None:
       self.unpack(buffer)
 
@@ -1849,8 +1881,8 @@ class Regacks(Packets):
            writeInt16(self.PacketId)
     if self.RegackFlags.TopicAliasFlag:
       body += writeInt16(self.TopicAlias)
-    if self.ReasonCode != 0 or self.RegackFlags.TopicAliasFlag:
-      body += bytes([self.ReasonCode])
+    if self.ReasonCode.value != 0 or self.RegackFlags.TopicAliasFlag:
+      body += self.ReasonCode.pack()
     msglen = 1 + len(body)  # length field(1) + body
     return bytes([msglen]) + body
 
@@ -1869,9 +1901,10 @@ class Regacks(Packets):
         self.TopicAlias = 0
       # ReasonCode: present when packet is long enough (Section 3.5.5)
       if pos < packetlen:
-        self.ReasonCode = buffer[pos]
+        self.ReasonCode = ReasonCodes(PacketTypes.REGACK)
+        self.ReasonCode.unpack(buffer[pos:])
       else:
-        self.ReasonCode = 0  # absent means success
+        self.ReasonCode = ReasonCodes(PacketTypes.REGACK)  # absent means success (0x00)
     except:
       logger.exception("Validating regack packet")
       raise
@@ -1886,7 +1919,7 @@ class Regacks(Packets):
     return self.RegackFlags == packet.RegackFlags and \
            self.PacketId == packet.PacketId and \
            self.TopicAlias == packet.TopicAlias and \
-           self.ReasonCode == packet.ReasonCode
+           self.ReasonCode.value == packet.ReasonCode.value
 
 
 # classes[n] maps packet type integer n to its class.
@@ -2139,7 +2172,7 @@ class Sleepresps(Packets):
     self.SleeprespFlags = SleeprespFlags()
     self.PacketId       = 0
     self.SleepDuration  = None  # None = absent (SleepDur flag clear)
-    self.ReasonCode     = 0     # 0x00 = success; absent from wire when 0
+    self.ReasonCode     = ReasonCodes(PacketTypes.SLEEPRESP)
     if buffer != None:
       self.unpack(buffer)
 
@@ -2152,8 +2185,8 @@ class Sleepresps(Packets):
       sd = self.SleepDuration
       body += bytes([(sd >> 24) & 0xFF, (sd >> 16) & 0xFF,
                      (sd >> 8)  & 0xFF,  sd        & 0xFF])
-    if self.ReasonCode != 0:
-      body += bytes([self.ReasonCode])
+    if self.ReasonCode.value != 0:
+      body += self.ReasonCode.pack()
     return bytes([1 + len(body)]) + body
 
   def unpack(self, buffer):
@@ -2172,9 +2205,10 @@ class Sleepresps(Packets):
         self.SleepDuration = None
       # ReasonCode: optional, inferred from remaining packet length (Section 3.16.4)
       if pos < packetlen:
-        self.ReasonCode = buffer[pos]
+        self.ReasonCode = ReasonCodes(PacketTypes.SLEEPRESP)
+        self.ReasonCode.unpack(buffer[pos:])
       else:
-        self.ReasonCode = 0
+        self.ReasonCode = ReasonCodes(PacketTypes.SLEEPRESP)  # absent means success (0x00)
     except:
       logger.exception("Validating sleepresp packet")
       raise
@@ -2190,7 +2224,7 @@ class Sleepresps(Packets):
     return self.SleeprespFlags == packet.SleeprespFlags and \
            self.PacketId       == packet.PacketId and \
            self.SleepDuration  == packet.SleepDuration and \
-           self.ReasonCode     == packet.ReasonCode
+           self.ReasonCode.value == packet.ReasonCode.value
 
 
 class Wakeups(Packets):
