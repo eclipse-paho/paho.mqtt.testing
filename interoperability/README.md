@@ -1,4 +1,4 @@
-This is a Python MQTT and MQTT-SB server (broker) which implements 
+This is a Python MQTT and MQTT-SN server (broker) which implements 
 MQTT 3.1.1, 5.0 and MQTT-SN 2.0.
 
 It is used for testing some Paho MQTT and MQTT-SN clients:
