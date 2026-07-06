@@ -244,7 +244,7 @@ class MQTTSNBrokers:
     else:
       self.lock = threading.RLock()
 
-    logger.info("MQTT-SN Paho Test Broker")
+    logger.info("MQTT-SN 2.0 Paho Test Broker")
     logger.info("Optional behaviour, publish on pubrel: %s", self.publish_on_pubrel)
     logger.info("Optional behaviour, single publish on overlapping topics: %s", self.broker.overlapping_single)
     logger.info("Optional behaviour, drop QoS 0 publications to disconnected clients: %s", self.dropQoS0)
