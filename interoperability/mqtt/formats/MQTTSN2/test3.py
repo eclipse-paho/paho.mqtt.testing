@@ -281,7 +281,7 @@ class TestSleepresp(unittest.TestCase):
         pkt = MQTTSN2.Sleepresps()
         pkt.PacketId      = 0x1234
         pkt.SleepDuration = None
-        pkt.ReasonCode    = 0
+        # ReasonCode left at its default (Success / 0x00)
 
         pkt2, _ = roundtrip(pkt)
 
@@ -289,47 +289,49 @@ class TestSleepresp(unittest.TestCase):
         self.assertEqual(pkt2.SleeprespFlags.SleepDur, False)
         self.assertEqual(pkt2.PacketId,                0x1234)
         self.assertIsNone(pkt2.SleepDuration)
-        self.assertEqual(pkt2.ReasonCode,              0)
+        self.assertEqual(pkt2.ReasonCode.value,        0)
 
     def test_with_sleep_duration(self):
         """Server returns a modified sleep duration."""
         pkt = MQTTSN2.Sleepresps()
         pkt.PacketId      = 42
         pkt.SleepDuration = 7200
-        pkt.ReasonCode    = 0
+        # ReasonCode left at its default (Success / 0x00)
 
         pkt2, _ = roundtrip(pkt)
 
         self.assertEqual(pkt, pkt2)
         self.assertEqual(pkt2.SleeprespFlags.SleepDur, True)
         self.assertEqual(pkt2.SleepDuration,           7200)
-        self.assertEqual(pkt2.ReasonCode,              0)
+        self.assertEqual(pkt2.ReasonCode.value,        0)
 
     def test_with_reason_code_only(self):
         """Failure reason code, no sleep duration."""
         pkt = MQTTSN2.Sleepresps()
         pkt.PacketId      = 10
         pkt.SleepDuration = None
-        pkt.ReasonCode    = 0x97   # Topic Alias Invalid
+        # 0x91 "Packet identifier in use" is the only non-success code valid for SLEEPRESP
+        pkt.ReasonCode = MQTTSN2.ReasonCodes(MQTTSN2.PacketTypes.SLEEPRESP, identifier=0x91)
 
         pkt2, _ = roundtrip(pkt)
 
         self.assertEqual(pkt, pkt2)
         self.assertIsNone(pkt2.SleepDuration)
-        self.assertEqual(pkt2.ReasonCode, 0x97)
+        self.assertEqual(pkt2.ReasonCode.value, 0x91)
 
     def test_with_sleep_duration_and_reason_code(self):
         """Server sends both a modified duration and a non-success reason code."""
         pkt = MQTTSN2.Sleepresps()
         pkt.PacketId      = 99
         pkt.SleepDuration = 3600
-        pkt.ReasonCode    = 0x80   # Unspecified error
+        # 0x91 "Packet identifier in use" is the only non-success code valid for SLEEPRESP
+        pkt.ReasonCode = MQTTSN2.ReasonCodes(MQTTSN2.PacketTypes.SLEEPRESP, identifier=0x91)
 
         pkt2, _ = roundtrip(pkt)
 
         self.assertEqual(pkt, pkt2)
         self.assertEqual(pkt2.SleepDuration, 3600)
-        self.assertEqual(pkt2.ReasonCode,    0x80)
+        self.assertEqual(pkt2.ReasonCode.value, 0x91)
 
     def test_sleep_duration_flag_derived_from_field(self):
         """SleepDur flag in pack() is derived from SleepDuration being non-None."""
@@ -366,8 +368,9 @@ class TestSleepresp(unittest.TestCase):
         self.assertNotEqual(pkt, pkt2)
 
     def test_inequality_different_reason_code(self):
-        pkt  = MQTTSN2.Sleepresps(); pkt.PacketId = 1; pkt.ReasonCode = 0
-        pkt2 = MQTTSN2.Sleepresps(); pkt2.PacketId = 1; pkt2.ReasonCode = 0x80
+        pkt  = MQTTSN2.Sleepresps(); pkt.PacketId = 1
+        pkt2 = MQTTSN2.Sleepresps(); pkt2.PacketId = 1
+        pkt2.ReasonCode = MQTTSN2.ReasonCodes(MQTTSN2.PacketTypes.SLEEPRESP, identifier=0x91)
         self.assertNotEqual(pkt, pkt2)
 
 

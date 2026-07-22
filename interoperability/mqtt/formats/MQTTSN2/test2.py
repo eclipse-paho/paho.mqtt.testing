@@ -191,7 +191,7 @@ ack.PacketId = 0x1234
 buf4 = ack.pack()
 ack2 = MQTTSN2.Subacks(buf4)
 check("PacketId round-trip",    ack2.PacketId == 0x1234)
-check("ReasonCode defaults 0",  ack2.ReasonCode == 0)
+check("ReasonCode defaults 0",  ack2.ReasonCode.value == 0)
 check("TopicAlias defaults 0",  ack2.TopicAlias == 0)
 check("TopicAliasFlag is False",ack2.SubackFlags.TopicAliasFlag == False)
 check("__eq__",                 ack == ack2)
@@ -201,10 +201,10 @@ section("Subacks — non-zero reason code, no alias")
 
 ack_rc = MQTTSN2.Subacks()
 ack_rc.PacketId = 5
-ack_rc.ReasonCode = 0x02   # granted QoS 2
+ack_rc.ReasonCode = MQTTSN2.ReasonCodes(MT.SUBACK, identifier=0x02)   # granted QoS 2
 buf_rc = ack_rc.pack()
 ack_rc2 = MQTTSN2.Subacks(buf_rc)
-check("ReasonCode round-trip",  ack_rc2.ReasonCode == 0x02)
+check("ReasonCode round-trip",  ack_rc2.ReasonCode.value == 0x02)
 check("__eq__",                 ack_rc == ack_rc2)
 check("wire length is 6",       len(buf_rc) == 6)
 
@@ -215,12 +215,12 @@ ack3.SubackFlags.TopicAliasFlag = True
 ack3.SubackFlags.TopicType = 0
 ack3.PacketId = 0x1234
 ack3.TopicAlias = 0x0007
-ack3.ReasonCode = 0x01   # granted QoS 1
+ack3.ReasonCode = MQTTSN2.ReasonCodes(MT.SUBACK, identifier=0x01)   # granted QoS 1
 buf6 = ack3.pack()
 ack4 = MQTTSN2.Subacks(buf6)
 check("TopicAliasFlag round-trip", ack4.SubackFlags.TopicAliasFlag == True)
 check("TopicAlias round-trip",     ack4.TopicAlias == 0x0007)
-check("ReasonCode round-trip",     ack4.ReasonCode == 0x01)
+check("ReasonCode round-trip",     ack4.ReasonCode.value == 0x01)
 check("__eq__",                    ack3 == ack4)
 check("wire length is 8",          len(buf6) == 8)
 
@@ -348,21 +348,23 @@ for cls, mtype, label in ack_cases:
   p2 = cls(buf)
   check(f"{label} wire length is 4",   len(buf) == 4)
   check(f"{label} PacketId round-trip", p2.PacketId == 0x1234)
-  check(f"{label} ReasonCode is 0",    p2.ReasonCode == 0)
+  check(f"{label} ReasonCode is 0",    p2.ReasonCode.value == 0)
   check(f"{label} __eq__",             p == p2)
   check(f"{label} __str__",
-        str(p2) == f"{label} (PacketId=4660, ReasonCode=0)")
+        str(p2) == f"{label} (PacketId=4660, ReasonCode=Success)")
 
 section("Acks — non-zero reason code present on wire")
 
 for cls, mtype, label in ack_cases:
   p = cls()
   p.PacketId = 7
-  p.ReasonCode = 0x80   # unspecified error
+  # 0xE6 "Only protection packet supported" is the only non-zero code valid
+  # for all of PUBACK, PUBREC, PUBREL and PUBCOMP.
+  p.ReasonCode = MQTTSN2.ReasonCodes(mtype, identifier=0xE6)
   buf = p.pack()
   p2 = cls(buf)
   check(f"{label} wire length is 5",    len(buf) == 5)
-  check(f"{label} ReasonCode round-trip", p2.ReasonCode == 0x80)
+  check(f"{label} ReasonCode round-trip", p2.ReasonCode.value == 0xE6)
   check(f"{label} __eq__",               p == p2)
 
 section("Acks — cross-type inequality")

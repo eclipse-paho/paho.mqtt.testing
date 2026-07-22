@@ -17,7 +17,7 @@
 
 Tests for MQTT-SN 2.0 encapsulation packet serialization and deserialization.
 
-Covers: Forwarder Encapsulation (0xFD), Session/Connection Encapsulation (0xFE),
+Covers: Forwarder Encapsulation (0xFD), Connection Encapsulation (0xFE),
 and Protection Encapsulation (0xFF).
 
 Each test exercises a complete pack/unpack round-trip and verifies every
@@ -219,16 +219,16 @@ class TestForwarderEncapsulation(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Session (Connection) Encapsulation
+# Connection Encapsulation
 # ---------------------------------------------------------------------------
 
-class TestSessionEncapsulation(unittest.TestCase):
+class TestConnectionEncapsulation(unittest.TestCase):
 
     # --- minimal: empty ClientIdentifier, no inner packet ---
 
     def test_minimal_round_trip(self):
         """Empty ClientIdentifier, empty MQTTSNPacket."""
-        pkt = MQTTSN2.SessionEncapsulations()
+        pkt = MQTTSN2.ConnectionEncapsulations()
 
         pkt2, _ = roundtrip(pkt)
 
@@ -238,14 +238,14 @@ class TestSessionEncapsulation(unittest.TestCase):
 
     def test_minimal_wire_length(self):
         """Minimal packet is 2 bytes: outer_length(1) + type(1)."""
-        buf = MQTTSN2.SessionEncapsulations().pack()
+        buf = MQTTSN2.ConnectionEncapsulations().pack()
         self.assertEqual(len(buf), 2)
 
     # --- with ClientIdentifier, no inner packet ---
 
     def test_client_identifier_only(self):
         """ClientIdentifier present, no inner packet."""
-        pkt = MQTTSN2.SessionEncapsulations()
+        pkt = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "my-device-01"
 
         pkt2, buf = roundtrip(pkt)
@@ -259,7 +259,7 @@ class TestSessionEncapsulation(unittest.TestCase):
 
     def test_client_identifier_utf8(self):
         """ClientIdentifier is a UTF-8 string and round-trips correctly."""
-        pkt = MQTTSN2.SessionEncapsulations()
+        pkt = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "sensor\u00b0C"   # degree symbol
 
         pkt2, _ = roundtrip(pkt)
@@ -271,7 +271,7 @@ class TestSessionEncapsulation(unittest.TestCase):
     def test_with_inner_pingreq(self):
         """Inner PINGREQ encapsulated; outer_length excludes inner bytes."""
         inner = make_pingreq()
-        pkt   = MQTTSN2.SessionEncapsulations()
+        pkt   = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "test"
         pkt.MQTTSNPacket     = inner
 
@@ -287,7 +287,7 @@ class TestSessionEncapsulation(unittest.TestCase):
     def test_with_inner_publish(self):
         """Larger inner packet (PUBLISH) round-trips correctly."""
         inner = make_publish()
-        pkt   = MQTTSN2.SessionEncapsulations()
+        pkt   = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "pub-client"
         pkt.MQTTSNPacket     = inner
 
@@ -298,7 +298,7 @@ class TestSessionEncapsulation(unittest.TestCase):
     def test_outer_length_does_not_include_inner(self):
         """The outer_length byte covers only up to end of ClientIdentifier."""
         inner = make_pingreq()
-        pkt   = MQTTSN2.SessionEncapsulations()
+        pkt   = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "test"
         pkt.MQTTSNPacket     = inner
         buf = pkt.pack()
@@ -310,7 +310,7 @@ class TestSessionEncapsulation(unittest.TestCase):
     def test_inner_packet_survives_round_trip_intact(self):
         """Inner bytes are stored verbatim and recovered without modification."""
         inner = make_publish()
-        pkt   = MQTTSN2.SessionEncapsulations()
+        pkt   = MQTTSN2.ConnectionEncapsulations()
         pkt.ClientIdentifier = "c"
         pkt.MQTTSNPacket     = inner
 
@@ -323,37 +323,37 @@ class TestSessionEncapsulation(unittest.TestCase):
     # --- packetType and dispatch ---
 
     def test_packet_type(self):
-        pkt = MQTTSN2.SessionEncapsulations()
+        pkt = MQTTSN2.ConnectionEncapsulations()
         self.assertEqual(pkt.packetType,
-                         MQTTSN2.PacketTypes.SESSION_ENCAPSULATION)
+                         MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION)
 
     def test_unpack_packet_dispatch(self):
-        pkt  = MQTTSN2.SessionEncapsulations()
+        pkt  = MQTTSN2.ConnectionEncapsulations()
         pkt2 = MQTTSN2.unpackPacket(pkt.pack())
-        self.assertIsInstance(pkt2, MQTTSN2.SessionEncapsulations)
+        self.assertIsInstance(pkt2, MQTTSN2.ConnectionEncapsulations)
 
     def test_in_encapsulation_classes_dict(self):
-        self.assertIn(MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
+        self.assertIn(MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION,
                       MQTTSN2.encapsulation_classes)
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.SESSION_ENCAPSULATION],
-            MQTTSN2.SessionEncapsulations)
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION],
+            MQTTSN2.ConnectionEncapsulations)
 
     # --- inequality ---
 
     def test_inequality_different_client_identifier(self):
-        pkt  = MQTTSN2.SessionEncapsulations(); pkt.ClientIdentifier  = "a"
-        pkt2 = MQTTSN2.SessionEncapsulations(); pkt2.ClientIdentifier = "b"
+        pkt  = MQTTSN2.ConnectionEncapsulations(); pkt.ClientIdentifier  = "a"
+        pkt2 = MQTTSN2.ConnectionEncapsulations(); pkt2.ClientIdentifier = "b"
         self.assertNotEqual(pkt, pkt2)
 
     def test_inequality_different_inner_packet(self):
-        pkt  = MQTTSN2.SessionEncapsulations(); pkt.MQTTSNPacket  = b"\x04\x0c\x00\x01"
-        pkt2 = MQTTSN2.SessionEncapsulations(); pkt2.MQTTSNPacket = b"\x04\x0c\x00\x02"
+        pkt  = MQTTSN2.ConnectionEncapsulations(); pkt.MQTTSNPacket  = b"\x04\x0c\x00\x01"
+        pkt2 = MQTTSN2.ConnectionEncapsulations(); pkt2.MQTTSNPacket = b"\x04\x0c\x00\x02"
         self.assertNotEqual(pkt, pkt2)
 
     def test_inequality_inner_absent_vs_present(self):
-        pkt  = MQTTSN2.SessionEncapsulations(); pkt.MQTTSNPacket  = b""
-        pkt2 = MQTTSN2.SessionEncapsulations(); pkt2.MQTTSNPacket = make_pingreq()
+        pkt  = MQTTSN2.ConnectionEncapsulations(); pkt.MQTTSNPacket  = b""
+        pkt2 = MQTTSN2.ConnectionEncapsulations(); pkt2.MQTTSNPacket = make_pingreq()
         self.assertNotEqual(pkt, pkt2)
 
 
@@ -841,7 +841,7 @@ class TestEncapsulationClassesDict(unittest.TestCase):
 
     def test_all_three_types_present(self):
         for type_code in (MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION,
-                          MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION,
                           MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION):
             self.assertIn(type_code, MQTTSN2.encapsulation_classes)
 
@@ -850,10 +850,10 @@ class TestEncapsulationClassesDict(unittest.TestCase):
             MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION],
             MQTTSN2.ForwarderEncapsulations)
 
-    def test_session_maps_to_correct_class(self):
+    def test_connection_maps_to_correct_class(self):
         self.assertIs(
-            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.SESSION_ENCAPSULATION],
-            MQTTSN2.SessionEncapsulations)
+            MQTTSN2.encapsulation_classes[MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION],
+            MQTTSN2.ConnectionEncapsulations)
 
     def test_protection_maps_to_correct_class(self):
         self.assertIs(
@@ -863,7 +863,7 @@ class TestEncapsulationClassesDict(unittest.TestCase):
     def test_encapsulation_types_not_in_classes_list(self):
         """The sparse type codes must not appear in the dense classes[] list."""
         for type_code in (MQTTSN2.PacketTypes.FOWARDER_ENCAPSULATION,
-                          MQTTSN2.PacketTypes.SESSION_ENCAPSULATION,
+                          MQTTSN2.PacketTypes.CONNECTION_ENCAPSULATION,
                           MQTTSN2.PacketTypes.PROTECTION_ENCAPSULATION):
             self.assertGreater(type_code, len(MQTTSN2.classes) - 1)
 

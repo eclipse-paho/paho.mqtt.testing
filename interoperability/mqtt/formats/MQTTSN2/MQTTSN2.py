@@ -54,7 +54,7 @@ class PacketTypes:
   AUTH, REGISTER, REGACK, \
   PUBWOS, SLEEPREQ, SLEEPRESP, WAKEUP, \
   ADVERTISE, SEARCHGW, GWINFO, \
-  FOWARDER_ENCAPSULATION, SESSION_ENCAPSULATION, PROTECTION_ENCAPSULATION = indexes
+  FOWARDER_ENCAPSULATION, CONNECTION_ENCAPSULATION, PROTECTION_ENCAPSULATION = indexes
 
 def PacketType(buffer):
   index = 1
@@ -71,7 +71,7 @@ class Packets(object):
     "Auth", "Register", "Regack", \
     "Pubwos", "Sleepreq", "Sleepresp", "Wakeup", \
     "Advertise", "SearchGW", "GWInfo", \
-    "Fowarder Encapsulation", "Session Encapsulation", "Protection Encapsulation"]
+    "Fowarder Encapsulation", "Connection Encapsulation", "Protection Encapsulation"]
 
   classNames = [name+'es' if name == "Publish" else
                 name+'s' if name != "reserved" else name for name in Names]
@@ -1024,7 +1024,7 @@ class Acks(Packets):
   def __eq__(self, packet):
     return self.packetType == packet.packetType and \
            self.PacketId == packet.PacketId and \
-           self.ReasonCode == packet.ReasonCode
+           self.ReasonCode.value == packet.ReasonCode.value
  
  
 class Pubacks(Acks):
@@ -2454,9 +2454,9 @@ class ForwarderEncapsulations(Packets):
            self.MQTTSNPacket         == packet.MQTTSNPacket
 
 
-class SessionEncapsulations(Packets):
+class ConnectionEncapsulations(Packets):
   """
-  Connection (Session) Encapsulation packet (Section 3.18).
+  Connection Encapsulation packet (Section 3.18).
 
   Allows a client whose network address has changed to associate a packet
   with an existing virtual connection by embedding its ClientIdentifier.
@@ -2475,7 +2475,7 @@ class SessionEncapsulations(Packets):
   def __init__(self, buffer=None):
     object.__setattr__(self, "names",
          ["packetType", "ClientIdentifier", "MQTTSNPacket"])
-    self.packetType      = PacketTypes.SESSION_ENCAPSULATION
+    self.packetType      = PacketTypes.CONNECTION_ENCAPSULATION
     self.ClientIdentifier = ""    # UTF-8 string; the virtual-connection client ID
     self.MQTTSNPacket     = b""   # raw bytes of the encapsulated packet
     if buffer != None:
@@ -2483,13 +2483,13 @@ class SessionEncapsulations(Packets):
 
   def pack(self):
     cid_bytes = writeData(self.ClientIdentifier)
-    outer_body = bytes([PacketTypes.SESSION_ENCAPSULATION]) + cid_bytes
+    outer_body = bytes([PacketTypes.CONNECTION_ENCAPSULATION]) + cid_bytes
     outer_len  = 1 + len(outer_body)  # length field(1) + outer_body
     return bytes([outer_len]) + outer_body + writeData(self.MQTTSNPacket)
 
   def unpack(self, buffer):
     assert len(buffer) >= 2
-    assert PacketType(buffer) == PacketTypes.SESSION_ENCAPSULATION
+    assert PacketType(buffer) == PacketTypes.CONNECTION_ENCAPSULATION
     try:
       outer_len, lenlen = PacketLens.decode(buffer)
       cid_start = lenlen + 1   # byte after type
@@ -2498,11 +2498,11 @@ class SessionEncapsulations(Packets):
       # Inner packet follows immediately after the outer header
       self.MQTTSNPacket = buffer[outer_len:]
     except:
-      logger.exception("Validating session encapsulation packet")
+      logger.exception("Validating connection encapsulation packet")
       raise
 
   def __str__(self):
-    return "SessionEncapsulation (" \
+    return "ConnectionEncapsulation (" \
            "ClientIdentifier=" + str(self.ClientIdentifier) + \
            ", MQTTSNPacket=" + str(self.MQTTSNPacket) + ")"
 
@@ -2758,7 +2758,7 @@ classes = [None,           # 0   reserved
 # Sparse dict for the three high-value encapsulation type codes
 encapsulation_classes = {
     PacketTypes.FOWARDER_ENCAPSULATION:    ForwarderEncapsulations,
-    PacketTypes.SESSION_ENCAPSULATION:     SessionEncapsulations,
+    PacketTypes.CONNECTION_ENCAPSULATION:  ConnectionEncapsulations,
     PacketTypes.PROTECTION_ENCAPSULATION:  ProtectionEncapsulations,
 }
 
