@@ -132,6 +132,13 @@ def writeLenData(data):
   # data could be a string, or bytes.  If string, encode into bytes with utf-8
   return writeInt16(len(data)) + (data if type(data) == type(b"") else bytes(data, "utf-8"))
 
+def decodeUTF8(buf):
+  "decode a UTF-8 encoded byte string, rejecting an embedded null character"
+  data = buf.decode("utf-8")
+  assert "\x00" not in data, \
+      "[MQTT-SN-1.7.4-2] a UTF-8 encoded string must not include an encoding of the null character"
+  return data
+
 class PacketLens:
 
   @staticmethod
@@ -631,7 +638,7 @@ class Connects(Packets):
       if cf.Will:
         will_alias_or_len = readInt16(buffer[pos:]);  pos += 2
         if self.WillFlags.WillTopicType == 3:  # Topic Name
-          self.WillTopic = buffer[pos:pos + will_alias_or_len].decode("utf-8")
+          self.WillTopic = decodeUTF8(buffer[pos:pos + will_alias_or_len])
           pos += will_alias_or_len
         else:
           self.WillTopic = will_alias_or_len  # store alias as integer
@@ -645,7 +652,7 @@ class Connects(Packets):
       # Optional: Auth Method + Auth Data
       if cf.Auth:
         method_len = buffer[pos];  pos += 1
-        self.AuthMethod = buffer[pos:pos + method_len].decode("utf-8")
+        self.AuthMethod = decodeUTF8(buffer[pos:pos + method_len])
         pos += method_len
         data_len = readInt16(buffer[pos:]);  pos += 2
         self.AuthData = buffer[pos:pos + data_len]
@@ -656,7 +663,7 @@ class Connects(Packets):
 
       # Optional: Client Identifier (remainder of packet)
       if pos < packetlen:
-        self.ClientId = buffer[pos:packetlen].decode("utf-8")
+        self.ClientId = decodeUTF8(buffer[pos:packetlen])
       else:
         self.ClientId = ""
 
@@ -1144,7 +1151,7 @@ class Subscribes(Packets):
       self.PacketId = readInt16(buffer[lenlen + 2:])
       topic_type = self.SubscribeFlags.TopicType
       if topic_type == 3:  # Topic Filter: fills to end of packet
-        self.TopicFilter = buffer[lenlen + 4:packetlen].decode("utf-8")
+        self.TopicFilter = decodeUTF8(buffer[lenlen + 4:packetlen])
         self.TopicAlias = 0
       else:                # Session (0) or Predefined (1): 2-byte alias
         self.TopicAlias = readInt16(buffer[lenlen + 4:])
@@ -1350,7 +1357,7 @@ class Unsubscribes(Packets):
       self.PacketId = readInt16(buffer[lenlen + 2:])
       topic_type = self.UnsubscribeFlags.TopicType
       if topic_type == 3:  # Topic Filter: fills to end of packet
-        self.TopicFilter = buffer[lenlen + 4:packetlen].decode("utf-8")
+        self.TopicFilter = decodeUTF8(buffer[lenlen + 4:packetlen])
         self.TopicAlias = 0
       else:                # Session (0) or Predefined (1): 2-byte alias
         self.TopicAlias = readInt16(buffer[lenlen + 4:])
@@ -1633,7 +1640,7 @@ class Disconnects(Packets):
         self.SessionExpiryInterval = None
       # ReasonString is optional remainder of packet
       if pos < packetlen:
-        self.ReasonString = buffer[pos:packetlen].decode("utf-8")
+        self.ReasonString = decodeUTF8(buffer[pos:packetlen])
       else:
         self.ReasonString = None
     except:
@@ -1700,7 +1707,7 @@ class Auths(Packets):
       self.ReasonCode.unpack(buffer[lenlen + 3:])
       method_len = readInt16(buffer[lenlen + 4:])
       pos = lenlen + 6
-      self.AuthMethod = buffer[pos:pos + method_len].decode("utf-8")
+      self.AuthMethod = decodeUTF8(buffer[pos:pos + method_len])
       pos += method_len
       self.AuthData = buffer[pos:packetlen]
     except:
@@ -1798,7 +1805,7 @@ class Registers(Packets):
         pos += 2
       else:
         self.TopicAlias = 0
-      self.TopicName = buffer[pos:packetlen].decode("utf-8")
+      self.TopicName = decodeUTF8(buffer[pos:packetlen])
     except:
       logger.exception("Validating register packet")
       raise
@@ -2494,7 +2501,7 @@ class ConnectionEncapsulations(Packets):
       outer_len, lenlen = PacketLens.decode(buffer)
       cid_start = lenlen + 1   # byte after type
       cid_end   = outer_len    # up to end of outer header
-      self.ClientIdentifier = buffer[cid_start:cid_end].decode("utf-8")
+      self.ClientIdentifier = decodeUTF8(buffer[cid_start:cid_end])
       # Inner packet follows immediately after the outer header
       self.MQTTSNPacket = buffer[outer_len:]
     except:
