@@ -467,8 +467,8 @@ class MQTTBrokers:
     if self.options["receiveMaximum"] < MQTTV5.MAX_PACKETID:
       resp.properties.ReceiveMaximum = self.options["receiveMaximum"]
     keepalive = packet.KeepAliveTimer
-    if packet.KeepAliveTimer > 0 and self.options["serverKeepAlive"] < packet.KeepAliveTimer:
-      keepalive = self.options["serverKeepAlive"]
+    if packet.KeepAliveTimer > 0 and self.options["max_keepalive"] < packet.KeepAliveTimer:
+      keepalive = self.options["max_keepalive"]
       resp.properties.ServerKeepAlive = keepalive
       logger.info("[MQTT5-3.1.2-21] client must use server keep alive if returned on connack")
     # Session expiry

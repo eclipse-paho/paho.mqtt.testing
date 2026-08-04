@@ -76,7 +76,7 @@ def process_config(config, options):
       elif words[0] == "persistence" and words[1] == "true":
         options["persistence"] = True
       elif words[0] in ["maximum_qos", "retain_available", "subscription_identifier_available",
-              "shared_subscription_available", "server_keep_alive", "visual", "mscfile"]:
+              "shared_subscription_available", "max_keepalive", "visual", "mscfile"]:
         bools = {"true":True,'false':False}
         result = words[1]
         if words[1] in bools.keys():
@@ -152,12 +152,12 @@ def run(config=None):
     "topicAliasMaximum":2,
     "maximumPacketSize":256,
     "receiveMaximum":2,
-    "serverKeepAlive":60,
+    "max_keepalive":60,
     "maximum_qos":2,
     "retain_available":True,
     "subscription_identifier_available":True,
     "shared_subscription_available":True,
-    "server_keep_alive":None,
+    "max_keepalive":None,
   }
 
   if config != None:
