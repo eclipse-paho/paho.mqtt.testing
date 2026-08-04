@@ -75,6 +75,8 @@ def process_config(config, options):
         options["maximumPacketSize"] = int(words[1])
       elif words[0] == "persistence" and words[1] == "true":
         options["persistence"] = True
+      elif words[0] == "max_keepalive":
+        options["serverKeepAlive"] = int(words[1])
       elif words[0] in ["maximum_qos", "retain_available", "subscription_identifier_available",
               "shared_subscription_available", "server_keep_alive", "visual", "mscfile"]:
         bools = {"true":True,'false':False}
