@@ -1335,7 +1335,12 @@ class UnsubSubacks(Packets):
       else:
         reasonCode = ReasonCodes(self.packetType, "Success")
       reasonCode.unpack(buffer[-leftlen:])
-      assert reasonCode.value in [0, 1, 2, 0x80], "[MQTT5-3.9.3-2] return code in QoS must be 0, 1, 2 or 0x80"
+      if self.packetType == PacketTypes.SUBACK:
+        assert reasonCode.value in [0x00, 0x01, 0x02, 0x80, 0x83, 0x87, 0x8F, 0x91, 0x97, 0x9E, 0xA1, 0xA2], \
+          "[MQTT5-3.9.3-2] SUBACK reason code must be a Subscribe Reason Code (Table 3-8), not 0x%02X" % reasonCode.value
+      else:
+        assert reasonCode.value in [0x00, 0x11, 0x80, 0x83, 0x87, 0x8F, 0x91], \
+          "[MQTT5-3.11.3-2] UNSUBACK reason code must be an Unsubscribe Reason Code (Table 3-9), not 0x%02X" % reasonCode.value
       leftlen -= 1
       self.reasonCodes.append(reasonCode)
     assert leftlen == 0

@@ -339,7 +339,9 @@ class Test(unittest.TestCase):
         time.sleep(1)
         # subscribeds is a list of (msgid, [qos])
         logging.info(callback.subscribeds)
-        assert callback.subscribeds[0][1][0].value == 0x80, "return code should be 0x80 %s" % callback.subscribeds
+        # Any Subscribe failure Reason Code (>= 0x80, MQTT 5.0 Table 3-8) signals the refusal;
+        # 0x87 Not authorized is the most specific one for a topic the client may not subscribe to.
+        assert callback.subscribeds[0][1][0].value >= 0x80, "return code should be a failure code (>= 0x80) %s" % callback.subscribeds
       except:
         traceback.print_exc()
         succeeded = False
