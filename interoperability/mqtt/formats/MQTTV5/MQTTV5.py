@@ -1,6 +1,6 @@
 """
 *******************************************************************
-  Copyright (c) 2013, 2019 IBM Corp.
+  Copyright (c) 2013, 2026 IBM Corp., Ian Craggs
 
   All rights reserved. This program and the accompanying materials
   are made available under the terms of the Eclipse Public License v1.0
@@ -24,7 +24,7 @@ so that the tests that use this package can send invalid data for error testing.
 
 """
 
-import logging, struct
+import logging, struct, traceback
 
 logger = logging.getLogger('MQTT broker')
 

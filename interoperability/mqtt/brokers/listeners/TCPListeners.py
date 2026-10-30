@@ -1,6 +1,6 @@
 """
 *******************************************************************
-  Copyright (c) 2013, 2019 IBM Corp.
+  Copyright (c) 2013, 2026 IBM Corp., Ian Craggs
 
   All rights reserved. This program and the accompanying materials
   are made available under the terms of the Eclipse Public License v1.0
@@ -249,7 +249,7 @@ def create(port, host="", TLS=False, serve_forever=False,
     bind_address = host
   server = ThreadingTCPServer((bind_address, port), WebSocketTCPHandler, False)
   if TLS:
-    context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLSv1_2)
+    context = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_SERVER)
     #try:
     #  context.set_ciphers('ALL:@SECLEVEL=1') # until we have seclevel 2 TLS config
     #except:
